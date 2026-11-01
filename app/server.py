@@ -27,6 +27,7 @@ import time
 
 import uvicorn
 import httpx
+from starlette.concurrency import run_in_threadpool
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
@@ -116,7 +117,7 @@ mcp = FastMCP("office-kb", host=MCP_HOST, port=MCP_PORT, stateless_http=True)
 
 
 @mcp.tool()
-def search_kb(query: str, top_k: int = 6) -> str:
+async def search_kb(query: str, top_k: int = 6) -> str:
     """在本地文档知识库里做语义检索，返回最相关的原文片段。
 
     用于回答关于历史项目文档、招标文件、合同、方案、评审材料的问题。
@@ -128,9 +129,14 @@ def search_kb(query: str, top_k: int = 6) -> str:
         top_k: 返回的片段数量，默认 6，最多 15。
     """
     top_k = max(1, min(int(top_k), 15))
-    try:
+
+    def _do():
         ensure_collection()
-        hits = search(query, top_k=top_k)
+        return search(query, top_k=top_k)
+
+    try:
+        # 同上：同步检索必须在线程池里跑，避免堵住 MCP 的事件循环
+        hits = await run_in_threadpool(_do)
     except Exception as e:
         return f"检索失败：{e}"
 
@@ -159,11 +165,14 @@ def search_kb(query: str, top_k: int = 6) -> str:
 
 
 @mcp.tool()
-def kb_stats() -> str:
+async def kb_stats() -> str:
     """查看本地知识库的规模：向量总数、集合名、已被索引的文件数、最近索引时间。"""
-    try:
+    def _count():
         ensure_collection()
-        vec_count = collection_count()
+        return collection_count()
+
+    try:
+        vec_count = await run_in_threadpool(_count)
     except Exception as e:
         return f"无法连接向量库：{e}"
 
@@ -1345,7 +1354,11 @@ async def api_search(request):
     group = (body.get("group") or "").strip()
     use_rerank = body.get("rerank")
     try:
-        hits = search_in(
+        # 检索链路（ollama 嵌入 + qdrant 查询 + LLM 重排）全是同步阻塞调用，
+        # 单次可能跑 30~400 秒。必须放到线程池，否则整个事件循环被占住，
+        # 期间管理台、kb_stats、MCP 握手全部无响应（实测会整站假死）。
+        hits = await run_in_threadpool(
+            search_in,
             q,
             top_k=max(1, min(k, 15)),
             sources=sources,
