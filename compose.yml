@@ -1,0 +1,131 @@
+# ============================================================
+# rag-stack · 迁移版（fnOS / x86_64）
+#
+# 相对原机的改动：
+#   1. 镜像 tag arm64 -> amd64
+#   2. 新增 embed-shim 服务（Cloudflare 优先 / 本地 Ollama 兜底）
+#   3. kb-mcp 与 indexer 的 OLLAMA_URL 指向 embed-shim，不再直连 Ollama
+#   4. 不再需要本机 Ollama 容器（原 compose 本来也没有，靠 host.docker.internal）
+# 业务代码、API 路由、前端页面全部未改。
+# ============================================================
+
+services:
+
+  # ---------- 向量库 ----------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: always
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+      - QDRANT__LOG_LEVEL=WARN
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "${BIND_IP:-127.0.0.1}:6333:6333"
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ---------- 嵌入网关（新增） ----------
+  embed-shim:
+    image: rag-stack-app:amd64
+    container_name: embed-shim
+    restart: always
+    command: python /shim/shim.py
+    environment:
+      - CF_ENABLED=${CF_ENABLED:-1}
+      - EMBED_PRIORITY=${EMBED_PRIORITY:-local}
+      - CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      - CF_MODEL=${CF_MODEL:-@cf/qwen/qwen3-embedding-0.6b}
+      - CF_TIMEOUT=${CF_TIMEOUT:-45}
+      - EMBED_FAIL_THRESHOLD=${EMBED_FAIL_THRESHOLD:-3}
+      - EMBED_COOLDOWN=${EMBED_COOLDOWN:-120}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${EMBED_MODEL:-qwen3-embedding:0.6b}
+      - EMBED_DIM=${EMBED_DIM:-1024}
+      - SHIM_PORT=8100
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./shim:/shim:ro
+    mem_limit: 384m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ---------- MCP 服务 + 管理页 ----------
+  kb-mcp:
+    image: rag-stack-app:amd64
+    container_name: kb-mcp
+    restart: always
+    command: python server.py
+    working_dir: /app
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - OLLAMA_URL=http://embed-shim:8100
+      - EMBED_MODEL=${EMBED_MODEL:-qwen3-embedding:0.6b}
+      - EMBED_DIM=${EMBED_DIM:-1024}
+      - COLLECTION=${COLLECTION:-office_docs}
+      - DOCS_DIR=/docs
+      - STATE_FILE=/state/index_state.json
+      - OCR_CACHE=/ocr_cache
+      - TMP_DIR=/tmp/ragtmp
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8765
+      - KB_TOKEN=${KB_TOKEN}
+      - KB_ADMIN_USER=${KB_ADMIN_USER:-admin}
+      - KB_ADMIN_PASS=${KB_ADMIN_PASS:-}
+      - VLM_BASE_URL=${VLM_BASE_URL}
+      - VLM_API_KEY=${VLM_API_KEY}
+      - VLM_MODEL=${VLM_MODEL:-zhanlu/glm-5.3-flash}
+      - OCR_MIN_CHARS=${OCR_MIN_CHARS:-50}
+      - OCR_DPI=${OCR_DPI:-150}
+      - TZ=Asia/Shanghai
+      - AUTO_CLASSIFY=${AUTO_CLASSIFY:-1}
+      - CTX_WORKERS=${CTX_WORKERS:-4}
+    volumes:
+      - ./docs:/docs
+      - ./data/state:/state
+      - ./data/ocr_cache:/ocr_cache
+      - ./data/tmp:/tmp/ragtmp
+    ports:
+      - "${BIND_IP:-127.0.0.1}:8765:8765"
+    depends_on:
+      - qdrant
+      - embed-shim
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ---------- 索引器（一次性任务） ----------
+  indexer:
+    image: rag-stack-app:amd64
+    profiles: ["tools"]
+    command: python index.py /docs
+    working_dir: /app
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - OLLAMA_URL=http://embed-shim:8100
+      - EMBED_MODEL=${EMBED_MODEL:-qwen3-embedding:0.6b}
+      - EMBED_DIM=${EMBED_DIM:-1024}
+      - COLLECTION=${COLLECTION:-office_docs}
+      - STATE_FILE=/state/index_state.json
+      - OCR_CACHE=/ocr_cache
+      - TMP_DIR=/tmp/ragtmp
+      - VLM_BASE_URL=${VLM_BASE_URL}
+      - VLM_API_KEY=${VLM_API_KEY}
+      - VLM_MODEL=${VLM_MODEL:-zhanlu/glm-5.3-flash}
+      - OCR_MIN_CHARS=${OCR_MIN_CHARS:-50}
+      - OCR_DPI=${OCR_DPI:-150}
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./docs:/docs
+      - ./data/state:/state
+      - ./data/ocr_cache:/ocr_cache
+      - ./data/tmp:/tmp/ragtmp
+    mem_limit: 3g

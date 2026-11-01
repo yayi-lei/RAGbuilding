@@ -1,0 +1,38 @@
+# ---- 凭据与本地环境 ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# ---- 数据与产物（绝不上传自己的文档和向量库）----
+docs/
+data/
+qdrant/
+snapshots/
+ocr_cache/
+*.snapshot
+*.tar.gz
+*.zip
+*.log
+
+# ---- 备份文件 ----
+*.bak
+*.bak-*
+*.orig
+*.v1.py.bak
+*.v2.py.bak
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

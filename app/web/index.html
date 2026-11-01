@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文档知识库 · 管理台</title>
+<link rel="stylesheet" href="/vendor/element-plus.css">
+<style>
+  html,body,#app{height:100%;margin:0}
+  body{background:#f5f7fa;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+
+  /* ---------- 登录 ---------- */
+  .login-wrap{height:100%;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#1f2a44 0%,#2b3a55 45%,#123 100%)}
+  .login-card{width:380px;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+  .login-head{text-align:center;padding:8px 0 2px}
+  .login-head .ico{font-size:40px;line-height:1}
+  .login-head h2{margin:12px 0 4px;font-size:19px;color:#1f2a44}
+  .login-head p{margin:0 0 6px;font-size:12px;color:#909399}
+  .login-tip{margin-top:14px;padding-top:14px;border-top:1px solid #ebeef5;
+    font-size:12px;color:#909399;text-align:center;line-height:1.8}
+
+  /* ---------- 主界面 ---------- */
+  .page{min-height:100%;display:flex;flex-direction:column}
+  .topbar{background:#fff;border-bottom:1px solid #e4e7ed;padding:0 24px;height:58px;
+    display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,.04);
+    position:sticky;top:0;z-index:10}
+  .topbar .brand{font-size:16px;font-weight:600;color:#1f2a44;margin-right:6px}
+  .topbar .spacer{flex:1}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:1px}
+  .dot.on{background:#67c23a;box-shadow:0 0 0 2px rgba(103,194,58,.18)}
+  .dot.off{background:#f56c6c;box-shadow:0 0 0 2px rgba(245,108,108,.18)}
+  .body{padding:18px 24px 40px;flex:1;max-width:1360px;width:100%;margin:0 auto;box-sizing:border-box}
+
+  .stat-card{border-radius:10px}
+  .stat-card .el-card__body{padding:16px 18px}
+  .stat-k{font-size:12px;color:#909399;margin-bottom:6px}
+  .stat-v{font-size:26px;font-weight:600;color:#1f2a44;line-height:1.2;
+    font-variant-numeric:tabular-nums}
+  .stat-v.small{font-size:15px;font-weight:500}
+
+  .panel{margin-top:16px;border-radius:10px}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+
+  .pbox{margin-bottom:16px;padding:14px 16px;border-radius:8px;
+    background:linear-gradient(180deg,#f0f6ff,#f7faff);border:1px solid #d6e6fb}
+  .pbox.done{background:linear-gradient(180deg,#f0fbf4,#f7fffa);border-color:#c8ecd6}
+  .pbox.fail{background:linear-gradient(180deg,#fff1f0,#fff8f8);border-color:#f6d4d2}
+  .phead{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .pstage{font-size:14px;font-weight:600;color:#1f2a44}
+  .pmeta{display:flex;justify-content:space-between;gap:12px;font-size:12px;
+    color:#909399;margin-top:8px;flex-wrap:wrap}
+  .pfile{font-family:ui-monospace,Consolas,monospace;color:#606266;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62%}
+
+  .logbox{margin-top:14px;background:#0f1116;border-radius:8px;padding:12px;
+    max-height:280px;overflow:auto;font-size:12px;line-height:1.7;
+    white-space:pre-wrap;word-break:break-all;color:#b9c0cb;
+    font-family:ui-monospace,Consolas,monospace}
+
+  .hit{border:1px solid #e4e7ed;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fafbfc}
+  .hit .meta{font-size:12px;color:#909399;margin-bottom:8px}
+  .hit .meta b{color:#409eff}
+  .hit .txt{white-space:pre-wrap;word-break:break-word;font-size:13px;color:#303133;line-height:1.7}
+
+  .dropzone{border:2px dashed #dcdfe6;border-radius:10px;padding:34px 20px;text-align:center;
+    color:#909399;transition:.15s;cursor:pointer;background:#fafbfc}
+  .dropzone:hover,.dropzone.hot{border-color:#409eff;background:#f0f6ff;color:#409eff}
+
+  /* ---------- 文档管理：左右分栏 ---------- */
+  .docsplit{display:flex;gap:14px;align-items:flex-start}
+  .treebox{width:250px;flex:0 0 250px;border:1px solid #e4e7ed;border-radius:8px;
+    padding:8px;max-height:620px;overflow:auto;background:#fafbfc}
+  .mainbox{flex:1;min-width:0}
+  .treebox .el-tree{background:transparent}
+  .tree-hd{display:flex;align-items:center;justify-content:space-between;
+    font-size:12px;color:#909399;padding:2px 6px 8px}
+  .batchbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:8px 12px;background:#f0f6ff;border:1px solid #d6e6fb;border-radius:8px;margin-bottom:10px}
+  .batchbar .cnt{font-size:13px;color:#409eff;font-weight:600}
+
+  /* ---------- 分块抽屉 ---------- */
+  .chunkhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .chunkhd .nm{font-size:13px;color:#606266;word-break:break-all;flex:1;min-width:200px}
+  .chunk{border:1px solid #e4e7ed;border-radius:8px;margin-bottom:10px;background:#fff;overflow:hidden}
+  .chunk .ch-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    background:#fafbfc;border-bottom:1px solid #ebeef5;font-size:12px;color:#909399}
+  .chunk .ch-hd .idx{font-weight:700;color:#409eff;font-size:13px}
+  .chunk .ch-bd{padding:12px;font-size:13px;line-height:1.75;color:#303133;
+    white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto}
+  .chunk .ch-ft{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;
+    border-top:1px solid #f2f6fc;background:#fafbfc}
+  .tagpick{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .empty-hint{text-align:center;padding:40px 20px;color:#c0c4cc;font-size:13px}
+
+  /* ---------- 流动条纹进度条（证明"在跑"） ---------- */
+  .pflow .el-progress-bar__inner{
+    background-image:linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,
+      transparent 50%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.28) 75%,transparent 75%);
+    background-size:18px 18px;
+    animation:pflow .9s linear infinite;
+  }
+  @keyframes pflow{from{background-position:0 0}to{background-position:18px 0}}
+
+  /* ---------- 心跳徽标 ---------- */
+  .hb{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+    padding:2px 9px;border-radius:11px;background:#f0f9eb;color:#67c23a;white-space:nowrap}
+  .hb .d{width:7px;height:7px;border-radius:50%;background:#67c23a;
+    animation:heartbeat 1.3s ease-in-out infinite}
+  @keyframes heartbeat{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.75)}}
+  .hb.warn{background:#fdf6ec;color:#e6a23c}.hb.warn .d{background:#e6a23c;animation-duration:.6s}
+  .hb.danger{background:#fef0f0;color:#f56c6c}.hb.danger .d{background:#f56c6c;animation-duration:.35s}
+  .hb.dead{background:#f4f4f5;color:#909399}.hb.dead .d{background:#c0c4cc;animation:none}
+
+  /* ---------- 常驻失败红条 ---------- */
+  .failbar{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:12px;
+    background:#fef0f0;border:1px solid #fbc4c4;border-radius:8px;font-size:13px;color:#c45656}
+  .failbar .ttl{font-weight:600;color:#f56c6c}
+  .failbar .sp{flex:1}
+
+  /* ---------- 失败项折叠 ---------- */
+  .failrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#f56c6c}
+  .failrow .cnt{cursor:pointer;text-decoration:underline dotted}
+
+
+  /* ---------- 索引进度（v2：步骤条 + 文档队列） ---------- */
+  .pnow{background:#f7f9fc;border:1px solid #e4eaf2;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+  .pnow-row{display:flex;gap:10px;font-size:13px;line-height:1.9}
+  .pnow-row .k{color:#909399;flex:0 0 68px}
+  .pnow-row .v{flex:1;min-width:0;color:#303133}
+  .pnow-row .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .steps{display:flex;align-items:center;gap:0;margin:14px 0 12px;overflow-x:auto;padding-bottom:2px}
+  .steps .step{display:flex;align-items:center;flex:0 0 auto}
+  .steps .dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;
+    justify-content:center;font-size:12px;background:#eef1f6;color:#909399;flex:0 0 auto;font-weight:600}
+  .steps .lbl{font-size:12px;color:#909399;margin-left:6px;white-space:nowrap}
+  .steps .bar{width:26px;height:2px;background:#eef1f6;margin:0 10px}
+  .steps .step.doing .dot{background:#409eff;color:#fff;box-shadow:0 0 0 4px rgba(64,158,255,.15)}
+  .steps .step.doing .lbl{color:#409eff;font-weight:600}
+  .steps .step.done .dot{background:#67c23a;color:#fff}
+  .steps .step.done .lbl{color:#67c23a}
+  .steps .step.done .bar{background:#c2e7b0}
+
+  .psum{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+  .pqueue{margin-top:14px;border:1px solid #e4e7ed;border-radius:8px;overflow:hidden}
+  .pqueue .qhead{background:#fafbfc;padding:7px 12px;font-size:12px;color:#909399;
+    border-bottom:1px solid #ebeef5}
+  .pqueue .qrow{display:flex;align-items:center;gap:10px;padding:7px 12px;font-size:13px;
+    border-bottom:1px solid #f5f7fa}
+  .pqueue .qrow:last-child{border-bottom:none}
+  .pqueue .qrow.doing{background:#f0f7ff}
+  .pqueue .qrow.done{color:#67c23a}
+  .pqueue .qrow.failed{color:#f56c6c;background:#fef0f0}
+  .pqueue .qi{flex:0 0 18px;text-align:center}
+  .pqueue .qn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#303133}
+  .pqueue .qrow.done .qn{color:#67c23a}
+  .pqueue .qs{flex:0 0 auto;font-size:12px;color:#909399;min-width:96px;text-align:right}
+  .pqueue .qc,.pqueue .qt{flex:0 0 auto;font-size:12px;color:#b0b4bd;min-width:52px;text-align:right}
+
+
+  /* ---------- 知识库栏 ---------- */
+  .kbbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    background:#fff;border-bottom:1px solid #e4e7ed;padding:8px 15px;border-radius:8px 8px 0 0}
+  .kbbar .lbl{font-size:12px;color:#909399}
+  .kbtabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .kbtab{padding:5px 13px;border-radius:16px;border:1px solid #dcdfe6;background:#fff;
+    font-size:13px;cursor:pointer;transition:.15s;color:#606266;white-space:nowrap}
+  .kbtab:hover{border-color:#409eff;color:#409eff}
+  .kbtab.on{background:#409eff;border-color:#409eff;color:#fff;font-weight:600}
+  .kbtab .n{opacity:.7;font-size:11px;margin-left:4px}
+
+  /* ---------- 分组树 ---------- */
+  .viewsw{display:flex;gap:4px;margin-bottom:8px}
+  .gnode{display:flex;align-items:center;gap:5px;font-size:13px;width:100%;padding:1px 0}
+  .gnode .cnt{font-size:11px;color:#909399;background:#f0f2f5;border-radius:8px;padding:0 6px}
+  .gnode.drop-on{background:#e8f3ff;border-radius:4px;outline:1px dashed #409eff}
+  .gfile{font-size:12px;color:#606266;padding:1px 0;display:flex;align-items:center;gap:5px;width:100%}
+  .gfile .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  tr.drop-on > td{background:#e8f3ff !important}
+  .ungrouped{color:#e6a23c}
+  .gnode .ops{display:inline-flex;gap:0;margin-left:2px;flex:0 0 auto}
+  .gnode .ops .el-button{padding:0 3px;height:18px;font-size:12px;margin:0}
+  .gnode .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filelist{margin-top:14px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ==================== 登录 ==================== -->
+  <div class="login-wrap" v-if="!logged">
+    <el-card class="login-card" shadow="always">
+      <div class="login-head">
+        <div class="ico">📚</div>
+        <h2>文档知识库</h2>
+        <p>请登录管理台</p>
+      </div>
+      <el-form :model="lf" @submit.prevent="doLogin" label-position="top" style="margin-top:14px">
+        <el-form-item label="用户名">
+          <el-input v-model="lf.username" size="large" placeholder="用户名"
+                    :prefix-icon="icons.User" clearable @keyup.enter="focusPw"></el-input>
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="lf.password" size="large" type="password" show-password
+                    ref="pwRef" placeholder="密码" :prefix-icon="icons.Lock" @keyup.enter="doLogin"></el-input>
+        </el-form-item>
+        <el-button type="primary" size="large" style="width:100%" :loading="logging" @click="doLogin">
+          登 录
+        </el-button>
+      </el-form>
+      <div class="login-tip">
+        登录成功后凭据保存在本浏览器<br>下次直接打开这个地址就行
+      </div>
+    </el-card>
+  </div>
+
+  <!-- ==================== 主界面 ==================== -->
+  <div class="page" v-else>
+    <div class="topbar">
+      <span class="brand">📚 文档知识库</span>
+      <el-tag :type="conn.ok ? 'success' : 'danger'" effect="light" size="small">
+        {{ conn.ok ? '已连接' : '连接失败' }}
+      </el-tag>
+      <el-tag v-if="st.ocr_ready" type="success" effect="plain" size="small">
+        OCR · {{ st.vlm_model }}
+      </el-tag>
+      <el-tag v-else type="info" effect="plain" size="small">OCR 未配置</el-tag>
+      <el-tag type="primary" effect="plain" size="small">嵌入 {{ st.embed_model }}</el-tag>
+      <el-tooltip :content="beTip('local')" placement="bottom" :show-after="200">
+        <el-tag :type="be.local.ok ? 'success' : 'danger'" effect="light" size="small" style="cursor:help">
+          <span class="dot" :class="be.local.ok ? 'on' : 'off'"></span>
+          本地 Ollama<span v-if="be.local.ms != null"> · {{ be.local.ms }}ms</span>
+        </el-tag>
+      </el-tooltip>
+      <el-tooltip :content="beTip('cloudflare')" placement="bottom" :show-after="200">
+        <el-tag :type="be.cloudflare.ok ? 'success' : 'danger'" effect="light" size="small" style="cursor:help">
+          <span class="dot" :class="be.cloudflare.ok ? 'on' : 'off'"></span>
+          Cloudflare<span v-if="be.cloudflare.ms != null"> · {{ be.cloudflare.ms }}ms</span>
+        </el-tag>
+      </el-tooltip>
+      <span class="spacer"></span>
+      <el-button size="small" :icon="icons.Refresh" circle @click="refresh" :loading="busy"></el-button>
+      <el-button size="small" text @click="doLogout">退出</el-button>
+    </div>
+
+    <div class="body">
+      <!-- 统计 -->
+      <el-row :gutter="12">
+        <el-col :xs="12" :sm="8" :md="4" v-for="c in statCards" :key="c.k">
+          <el-card class="stat-card" shadow="never">
+            <div class="stat-k">{{ c.k }}</div>
+            <div class="stat-v" :class="{small:c.small}">{{ c.v }}</div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- Tabs -->
+      <el-card class="panel" shadow="never">
+        <el-tabs v-model="tab">
+
+          <!-- ---------- 文档管理 ---------- -->
+          <el-tab-pane label="文档管理" name="files">
+
+            <!-- ===== 索引进度（按真实流程：步骤条 + 文档队列）===== -->
+            <div v-if="prog.show" class="pbox" :class="prog.cls">
+              <div class="phead">
+                <span class="pstage">
+                  <el-icon class="is-loading" v-if="prog.running" style="margin-right:6px"><Loading/></el-icon>
+                  {{ prog.title }}
+                </span>
+                <span style="font-size:20px;font-weight:700;color:#409eff;font-variant-numeric:tabular-nums">
+                  {{ prog.pct.toFixed(1) }}%
+                </span>
+              </div>
+
+              <el-progress :percentage="Math.min(100, Number(prog.pct.toFixed(1)))" :stroke-width="14"
+                           :status="prog.cls==='done'?'success':(prog.cls==='fail'?'exception':'')"
+                           :show-text="false" :class="{'pflow': prog.running}"
+                           style="margin:10px 0 10px"></el-progress>
+
+              <!-- 四个心跳信号 -->
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                <span class="hb" :class="prog.hbCls">
+                  <span class="d"></span>{{ prog.hbText }}
+                </span>
+                <span v-if="prog.running && prog.etaText" style="font-size:12px;color:#909399">
+                  {{ prog.etaText }}
+                </span>
+                <span v-if="prog.running && prog.chunkText" style="font-size:12px;color:#409eff;
+                      font-variant-numeric:tabular-nums">
+                  {{ prog.chunkText }}
+                </span>
+                <span v-if="prog.running" style="font-size:12px;color:#606266;
+                      font-variant-numeric:tabular-nums">
+                  ⏱ 已用 {{ prog.elapsedText }}
+                </span>
+                <span v-if="prog.saveHint" style="font-size:12px;color:#e6a23c">{{ prog.saveHint }}</span>
+              </div>
+
+              <div v-if="prog.running && prog.file" class="pnow">
+                <div class="pnow-row">
+                  <span class="k">当前文档</span>
+                  <span class="v ell" :title="prog.file">{{ prog.file }}</span>
+                </div>
+                <div class="pnow-row">
+                  <span class="k">当前阶段</span>
+                  <span class="v">
+                    <b style="color:#409eff">{{ prog.stepLabel }}</b>
+                    <span v-if="prog.chunkInfo" style="color:#909399">　{{ prog.chunkInfo }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="steps">
+                <div v-for="(s,i) in prog.steps" :key="s.key" class="step" :class="s.state">
+                  <span class="dot">{{ s.state === 'done' ? '✓' : (i + 1) }}</span>
+                  <span class="lbl">{{ s.name }}</span>
+                  <span v-if="i < prog.steps.length - 1" class="bar"></span>
+                </div>
+              </div>
+
+              <div class="psum">
+                <el-tag v-for="(c,i) in prog.chips" :key="i" size="small" effect="plain"
+                        :type="c.type || 'info'">{{ c.text }}</el-tag>
+              </div>
+
+              <div v-if="prog.failedCount" style="margin-top:10px">
+                <div class="failrow">
+                  <span>❌ {{ prog.failedCount }} 个文档失败</span>
+                  <span class="cnt" @click="progShowFail = !progShowFail">
+                    {{ progShowFail ? '收起' : '展开看看' }}
+                  </span>
+                </div>
+                <div v-if="progShowFail" style="margin-top:6px">
+                  <div v-for="it in prog.failedList" :key="it.name"
+                       style="font-size:12px;color:#c45656;padding:3px 0;display:flex;gap:8px">
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                          :title="it.name">{{ it.name }}</span>
+                    <span style="color:#e6a23c">{{ it.reason }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="prog.items.length" class="pqueue" style="margin-top:10px">
+                <div class="qhead">
+                  本次待处理 {{ prog.items.length }} 个文档
+                  <span v-if="prog.trigger">· 触发方式：{{ prog.trigger === 'cron' ? '定时任务' : '手动' }}</span>
+                </div>
+                <div v-for="it in prog.items" :key="it.name" class="qrow" :class="it.status">
+                  <span class="qi">
+                    <span v-if="it.status === 'done'">✅</span>
+                    <span v-else-if="it.status === 'failed'">❌</span>
+                    <span v-else-if="it.status === 'doing'">⏳</span>
+                    <span v-else>○</span>
+                  </span>
+                  <span class="qn" :title="it.name">{{ it.name }}</span>
+                  <span class="qs">{{ it.statusText }}</span>
+                  <span class="qc">{{ it.chunks ? it.chunks + ' 块' : '' }}</span>
+                  <span class="qt">{{ it.seconds ? it.seconds + 's' : '' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ===== 知识库切换栏 ===== -->
+            <div class="kbbar">
+              <span class="lbl">知识库</span>
+              <div class="kbtabs">
+                <div v-for="k in kbs" :key="k.name" class="kbtab" :class="{on: curKb === k.name}"
+                     @click="switchKb(k.name)">
+                  {{ k.name }}<span class="n">{{ k.files }}</span>
+                </div>
+                <el-tooltip content="新建知识库" placement="bottom">
+                  <el-button size="small" :icon="icons.Plus" circle @click="openKbDialog('create')"></el-button>
+                </el-tooltip>
+              </div>
+              <span style="flex:1"></span>
+              <el-button v-if="curKb !== defaultKb" link size="small" @click="openKbDialog('rename')">重命名</el-button>
+              <el-button v-if="curKb !== defaultKb" link size="small" type="danger" @click="deleteKb">删除库</el-button>
+            </div>
+
+            <div class="docsplit">
+              <div class="treebox">
+                <div class="viewsw">
+                  <el-radio-group v-model="leftView" size="small">
+                    <el-radio-button value="group">分组</el-radio-button>
+                    <el-radio-button value="dir">目录</el-radio-button>
+                  </el-radio-group>
+                </div>
+
+                <!-- ===== 分组树（可拖拽归类） ===== -->
+                <template v-if="leftView === 'group'">
+                  <div class="tree-hd">
+                    <span>分组 · 拖文件、悬停改</span>
+                    <span>
+                      <el-button link size="small" :icon="icons.Plus" @click="newGroup">新建</el-button>
+                      <el-button link size="small" @click="groupFilter=''">全部</el-button>
+                    </span>
+                  </div>
+                  <el-tree :data="groupTree" :props="{ label:'name', children:'children' }"
+                           node-key="path" highlight-current :expand-on-click-node="false"
+                           :default-expand-all="true"
+                           draggable
+                           :allow-drop="allowGroupDrop"
+                           :allow-drag="allowGroupDrag"
+                           @node-click="onGroupClick"
+                           @node-drop="onGroupDrop">
+                    <template #default="{ data }">
+                      <span class="gnode" :class="{ungrouped: !data.dir}"
+                            :title="data.path"
+                            @mouseenter="hoverNode = data.path" @mouseleave="hoverNode = ''">
+                        <span>{{ data.dir ? '📁' : '📄' }}</span>
+                        <span class="nm">{{ data.name }}</span>
+                        <span v-if="data.dir" class="cnt">{{ (data.files||[]).length }}</span>
+                        <span v-if="data.dir && data.path && hoverNode === data.path" class="ops" @click.stop>
+                          <el-tooltip content="新建子分组" placement="top">
+                            <el-button link size="small" @click="newGroup(data.path)">＋</el-button>
+                          </el-tooltip>
+                          <el-tooltip content="重命名" placement="top">
+                            <el-button link size="small" type="primary" @click="renameGroup(data)">✎</el-button>
+                          </el-tooltip>
+                          <el-tooltip content="删除分组（不删文档）" placement="top">
+                            <el-button link size="small" type="danger" @click="delGroup(data)">✕</el-button>
+                          </el-tooltip>
+                        </span>
+                      </span>
+                    </template>
+                  </el-tree>
+                </template>
+
+                <!-- ===== 物理目录树 ===== -->
+                <template v-else>
+                  <div class="tree-hd">
+                    <span>物理目录</span>
+                    <el-button link size="small" @click="clearTreeFilter">全部</el-button>
+                  </div>
+                  <el-tree :data="treeData" :props="{ label:'name', children:'children' }"
+                           node-key="key" highlight-current :expand-on-click-node="false"
+                           @node-click="onTreeClick">
+                    <template #default="{ data }">
+                      <span style="display:flex;align-items:center;gap:6px;font-size:13px;width:100%">
+                        <span>{{ data.dir ? '📁' : '📄' }}</span>
+                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="data.name">{{ data.name }}</span>
+                        <el-tag v-if="!data.dir && data.info" size="small" :type="data.info.indexed ? 'success':'warning'" effect="plain">
+                          {{ data.info.indexed ? data.info.chunks+'块' : '待' }}
+                        </el-tag>
+                      </span>
+                    </template>
+                  </el-tree>
+                </template>
+              </div>
+
+              <div class="mainbox">
+                <div class="toolbar">
+                  <el-button type="primary" :icon="icons.RefreshRight" :loading="st.indexing"
+                             :disabled="st.indexing" @click="startIndex">
+                    {{ st.indexing ? '索引运行中…' : '增量索引' }}
+                  </el-button>
+                  <el-select v-model="idxBackend" :disabled="st.indexing" style="width:168px"
+                             title="本次手动索引使用的嵌入通道；自动扫描始终按「本地优先、CF 兜底」">
+                    <el-option label="自动（本地优先）" value="auto"></el-option>
+                    <el-option label="强制本地 Ollama" value="local"></el-option>
+                    <el-option label="强制 Cloudflare" value="cloudflare"></el-option>
+                  </el-select>
+                  <el-input v-model="fileKw" placeholder="搜索文件名…" clearable
+                            style="width:190px" :prefix-icon="icons.Search"></el-input>
+                  <el-select v-model="tagFilter" placeholder="按标签筛选" clearable multiple
+                             collapse-tags style="width:180px">
+                    <el-option v-for="t in allTags" :key="t" :label="t" :value="t"></el-option>
+                  </el-select>
+                  <span style="font-size:12px;color:#909399">
+                    {{ filteredFiles.length }} 个文件 · 最近索引 {{ fmtTime(st.last_indexed) }}
+                  </span>
+                </div>
+
+                <div v-if="selected.length" class="batchbar">
+                  <span class="cnt">已选 {{ selected.length }} 个</span>
+                  <el-button size="small" :loading="batching" @click="batchAction('reindex')">重新索引</el-button>
+                  <el-button size="small" @click="openGroupDialog">整理分组</el-button>
+                  <el-button size="small" @click="openTagDialog">打标签</el-button>
+                  <el-button size="small" type="danger" plain :loading="batching" @click="batchAction('delete')">删除</el-button>
+                  <el-button size="small" text @click="clearSelection">取消选择</el-button>
+                </div>
+
+                <el-table ref="fileTable" :data="filteredFiles" size="small" stripe
+                          @selection-change="onSelect" style="width:100%">
+                  <el-table-column type="selection" width="42"></el-table-column>
+                  <el-table-column prop="name" label="文件" min-width="240" show-overflow-tooltip></el-table-column>
+                  <el-table-column prop="size" label="大小" width="88" sortable>
+                    <template #default="{row}">{{ fmtSize(row.size) }}</template>
+                  </el-table-column>
+                  <el-table-column label="状态" width="88">
+                    <template #default="{row}">
+                      <el-tag :type="row.indexed?'success':'warning'" size="small" effect="light">
+                        {{ row.indexed ? '已索引' : '待索引' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="chunks" label="块数" width="66" align="right"></el-table-column>
+                  <el-table-column label="分组" min-width="112">
+                    <template #default="{row}">
+                      <el-tag v-if="row.group && row.group !== '未分组'" size="small" type="primary" effect="plain">
+                        {{ row.group }}
+                      </el-tag>
+                      <span v-else style="color:#e6a23c;font-size:12px">未分组</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="标签" min-width="110">
+                    <template #default="{row}">
+                      <el-tag v-for="t in (tagMap[row.name]||[])" :key="t" size="small"
+                              effect="plain" style="margin-right:4px">{{ t }}</el-tag>
+                      <span v-if="!(tagMap[row.name]||[]).length" style="color:#c0c4cc;font-size:12px">—</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="extract" label="解析" width="110" show-overflow-tooltip>
+                    <template #default="{row}">
+                      <span style="font-size:12px;color:#909399">{{ row.extract || '—' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="118" align="center">
+                    <template #default="{row}">
+                      <el-button link type="primary" size="small" @click="openChunks(row)">分块</el-button>
+                      <el-button link type="danger" size="small" @click="delFile(row)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                  <template #empty>
+                    <div class="empty-hint">docs 目录是空的 —— 去「上传文档」或往 Samba 的 <code>Z:</code> 盘丢文件</div>
+                  </template>
+                </el-table>
+
+                <div v-if="logShown" style="margin-top:12px">
+                  <el-divider content-position="left">
+                    <span style="font-size:12px;color:#909399">索引日志</span>
+                  </el-divider>
+                  <div class="logbox">{{ logText || '（暂无日志）' }}</div>
+                </div>
+              </div>
+            </div>
+
+          </el-tab-pane>
+          <!-- ---------- 上传 ---------- -->
+          <el-tab-pane label="上传文档" name="upload">
+            <div class="dropzone" :class="{hot:dragging}"
+                 @click="pickFile"
+                 @dragover.prevent="dragging=true"
+                 @dragleave.prevent="dragging=false"
+                 @drop.prevent="onDrop">
+              <div style="font-size:32px;margin-bottom:8px">📂</div>
+              把文件拖到这里，或点击选择
+              <div style="font-size:12px;margin-top:8px">
+                支持 pdf / docx / doc / xlsx / xls / pptx / ppt / md / txt / csv / html
+              </div>
+            </div>
+            <input ref="fileRef" type="file" multiple hidden @change="onPick"/>
+
+            <div class="filelist" v-if="pending.length">
+              <el-table :data="pending" size="small" max-height="260">
+                <el-table-column prop="name" label="待上传文件" show-overflow-tooltip></el-table-column>
+                <el-table-column label="大小" width="100">
+                  <template #default="{row}">{{ fmtSize(row.size) }}</template>
+                </el-table-column>
+                <el-table-column width="70" align="center">
+                  <template #default="{$index}">
+                    <el-button link type="danger" size="small" @click="pending.splice($index,1)">移除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div style="margin-top:12px">
+                <el-button type="primary" :loading="uploading" @click="doUpload">
+                  开始上传（{{ pending.length }} 个）
+                </el-button>
+                <el-button @click="pending=[]">清空</el-button>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <!-- ---------- 检索测试 ---------- -->
+          <el-tab-pane label="检索测试" name="search">
+            <div class="toolbar">
+              <el-input v-model="q" placeholder="输入一句话，试试能不能找回原文（例如：质保期几年）"
+                        style="max-width:520px" clearable @keyup.enter="doSearch"></el-input>
+              <el-button type="primary" :icon="icons.Search" :loading="searching" @click="doSearch">检索</el-button>
+            </div>
+            <div v-if="hits !== null">
+              <div v-if="!hits.length" style="color:#909399;padding:20px 0">没有命中</div>
+              <div v-for="(h,i) in hits" :key="i" class="hit">
+                <div class="meta">
+                  【出处】<b>{{ h.source }}</b>
+                  <span v-if="h.page">（第 {{ h.page }} 页）</span>
+                  <span v-else-if="h.chunk !== null && h.chunk !== undefined">（第 {{ h.chunk }} 块）</span>
+                  · 相似度 <b>{{ h.score != null ? Number(h.score).toFixed(4) : '?' }}</b>
+                </div>
+                <div class="txt">{{ h.text }}</div>
+              </div>
+            </div>
+            <div v-else style="color:#c0c4cc;padding:20px 0;font-size:13px">
+              输入问题后点「检索」，结果会显示命中的原文片段和出处
+            </div>
+          </el-tab-pane>
+
+          <!-- ---------- AI 待确认 ---------- -->
+          <el-tab-pane name="cand">
+            <template #label>
+              <span>AI 待确认</span>
+              <el-badge v-if="candCount" :value="candCount" type="danger" style="margin-left:6px"></el-badge>
+            </template>
+
+            <div class="toolbar">
+              <el-button type="primary" :icon="icons.MagicStick" :loading="candRunning"
+                         :disabled="candRunning" @click="runClassify(false)">
+                {{ candRunning ? 'AI 分析中…' : '对未分组文档生成建议' }}
+              </el-button>
+              <el-button :loading="candRunning" :disabled="candRunning" @click="runClassify(true)">
+                全部重跑
+              </el-button>
+              <span style="font-size:12px;color:#909399">
+                每个文档约 5~8 秒；已人工归类的不会被覆盖
+              </span>
+            </div>
+
+            <!-- 生成进度 -->
+            <div v-if="candJob.running || candJob.total" class="pbox" :class="candJob.running ? '' : 'done'">
+              <div class="phead">
+                <span class="pstage">
+                  <el-icon class="is-loading" v-if="candJob.running" style="margin-right:6px"><Loading/></el-icon>
+                  {{ candJob.running ? '正在分析文档…' : '分析完成' }}
+                </span>
+                <span style="font-size:20px;font-weight:700;color:#409eff;font-variant-numeric:tabular-nums">
+                  {{ candJob.total ? ((candJob.done / candJob.total) * 100).toFixed(0) : 0 }}%
+                </span>
+              </div>
+              <el-progress :percentage="candJob.total ? Number(((candJob.done / candJob.total) * 100).toFixed(1)) : 0"
+                           :stroke-width="10" :show-text="false"
+                           :status="candJob.running ? '' : 'success'" style="margin:10px 0 8px"></el-progress>
+              <div class="pmeta">
+                <span class="pfile" :title="candJob.current">{{ candJob.current || '—' }}</span>
+                <span>{{ candJob.done }} / {{ candJob.total }} · 成功 {{ candJob.ok }} · 失败 {{ candJob.fail }}</span>
+              </div>
+              <div v-if="candJob.log" class="logbox" style="max-height:170px;margin-top:10px">{{ candJob.log }}</div>
+            </div>
+
+            <!-- 批量条 -->
+            <div v-if="candSel.length" class="batchbar">
+              <span class="cnt">已选 {{ candSel.length }} 条</span>
+              <el-button size="small" type="primary" :loading="candApplying" @click="applyCand(candSel, true)">
+                全部采纳
+              </el-button>
+              <el-button size="small" @click="dismissCand(candSel, true)">全部忽略</el-button>
+              <el-button size="small" text @click="clearCandSel">取消选择</el-button>
+            </div>
+
+            <el-table :data="candidates" size="small" stripe style="width:100%"
+                      @selection-change="onCandSel" ref="candTable">
+              <el-table-column type="selection" width="42"></el-table-column>
+              <el-table-column prop="fname" label="文件" min-width="230" show-overflow-tooltip></el-table-column>
+              <el-table-column label="当前" width="150">
+                <template #default="{row}">
+                  <div style="font-size:12px;color:#909399">
+                    {{ row.cur_kb }}<br>
+                    <span :style="{color: row.cur_group === '未分组' ? '#e6a23c' : '#606266'}">{{ row.cur_group }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="AI 建议" min-width="240">
+                <template #default="{row}">
+                  <div style="font-size:12px">
+                    <el-tag size="small" effect="plain" type="primary">{{ row.kb }}</el-tag>
+                    <el-tag size="small" effect="dark" style="margin-left:4px"
+                            :type="row.group ? 'success' : 'info'">
+                      {{ row.group || '不分类（留未分组）' }}
+                    </el-tag>
+                    <div style="margin-top:4px">
+                      <el-tag v-for="t in row.tags" :key="t" size="small" effect="plain"
+                              style="margin-right:4px">{{ t }}</el-tag>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="置信" width="76" align="center">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.confidence === 'high' ? 'success' : (row.confidence === 'low' ? 'danger' : 'warning')"
+                          effect="light">{{ row.confidence || '-' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="150" align="center">
+                <template #default="{row}">
+                  <el-button link type="primary" size="small" @click="applyCand([row], false)">采纳</el-button>
+                  <el-button link size="small" @click="editCand(row)">改一下</el-button>
+                  <el-button link type="danger" size="small" @click="dismissCand([row], false)">忽略</el-button>
+                </template>
+              </el-table-column>
+              <template #empty>
+                <div class="empty-hint">
+                  暂无待确认建议 —— 点上面的「生成建议」让 AI 分析一轮
+                </div>
+              </template>
+            </el-table>
+          </el-tab-pane>
+
+        </el-tabs>
+      </el-card>
+    </div>
+  </div>
+  <!-- ==================== 分块管理抽屉 ==================== -->
+  <el-drawer v-model="chunkDrawer" size="64%" :with-header="false">
+    <div style="padding:4px 6px 20px">
+      <div class="chunkhd">
+        <el-button link :icon="icons.ArrowLeft" @click="chunkDrawer=false">返回</el-button>
+        <span class="nm" :title="chunkSrc">{{ chunkSrc }}</span>
+        <el-tag size="small" type="info" effect="plain">{{ chunkTotal }} 块</el-tag>
+        <el-button size="small" type="primary" :icon="icons.Plus" @click="startAddChunk">新增分块</el-button>
+        <el-button size="small" :icon="icons.Refresh" :loading="chunkLoading" @click="loadChunks">刷新</el-button>
+      </div>
+
+      <el-alert v-if="chunkErr" :title="chunkErr" type="error" show-icon :closable="false" style="margin-bottom:12px"></el-alert>
+      <el-alert title="编辑 / 新增 / 删除都会重新调用嵌入模型（每块约 8~12 秒），请耐心等" type="info" show-icon
+                :closable="false" style="margin-bottom:12px"></el-alert>
+
+      <div v-if="adding" class="chunk" style="border-color:#409eff">
+        <div class="ch-hd"><span class="idx">新</span><span>新增分块</span></div>
+        <div class="ch-bd" style="padding:10px">
+          <el-input v-model="newText" type="textarea" :rows="6" placeholder="粘贴要新增的文本内容…"></el-input>
+        </div>
+        <div class="ch-ft">
+          <el-button size="small" @click="adding=false; newText=''">取消</el-button>
+          <el-button size="small" type="primary" :loading="saving" @click="doAddChunk">保存并嵌入</el-button>
+        </div>
+      </div>
+
+      <div v-if="chunkLoading" style="text-align:center;padding:30px">
+        <el-icon class="is-loading" style="font-size:22px"><Loading/></el-icon>
+        <div style="margin-top:8px;color:#909399;font-size:13px">加载中…</div>
+      </div>
+      <div v-else-if="!chunks.length && !adding" class="empty-hint">这个文件还没有分块（可能是「待索引」状态）</div>
+
+      <div v-for="c in chunks" :key="c.id" class="chunk">
+        <div class="ch-hd">
+          <span class="idx">#{{ c.chunk }}</span>
+          <span>{{ c.len }} 字</span>
+          <el-tag v-if="c.page" size="small" effect="plain">第 {{ c.page }} 页</el-tag>
+          <el-tag v-if="c.manual" size="small" type="success" effect="plain">手动新增</el-tag>
+          <el-tag v-if="c.edited" size="small" type="warning" effect="plain">已编辑</el-tag>
+          <span style="flex:1"></span>
+          <template v-if="!c._editing">
+            <el-button link size="small" type="primary" @click="editChunk(c)">编辑</el-button>
+            <el-popconfirm title="确认删除这个分块？" @confirm="delChunk(c)">
+              <template #reference><el-button link size="small" type="danger">删除</el-button></template>
+            </el-popconfirm>
+          </template>
+        </div>
+
+        <div v-if="!c._editing" class="ch-bd">{{ c.text }}</div>
+        <template v-else>
+          <div class="ch-bd" style="padding:10px">
+            <el-input v-model="c._draft" type="textarea" :rows="8"></el-input>
+          </div>
+          <div class="ch-ft">
+            <el-button size="small" @click="c._editing=false; c._draft=''">取消</el-button>
+            <el-button size="small" type="primary" :loading="saving" @click="saveChunk(c)">保存并重新嵌入</el-button>
+          </div>
+        </template>
+      </div>
+    </div>
+  </el-drawer>
+
+  <!-- ==================== 整理分组 ==================== -->
+  <el-dialog v-model="groupDialog" title="整理分组" width="480px">
+    <div style="font-size:13px;color:#606266;margin-bottom:14px">
+      把选中的 <b style="color:#409eff">{{ selected.length }}</b> 个文件归入：
+    </div>
+    <el-form label-width="80px" label-position="left">
+      <el-form-item label="知识库">
+        <el-select v-model="grpTarget.kb" style="width:100%">
+          <el-option v-for="k in kbs" :key="k.name" :label="k.name" :value="k.name"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="分组">
+        <el-select v-model="grpTarget.group" filterable allow-create default-first-option
+                   clearable placeholder="选择已有分组，或输入新分组名（支持 父/子 多级）" style="width:100%">
+          <el-option v-for="g in curGroups" :key="g" :label="g" :value="g"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <el-alert type="info" :closable="false" show-icon
+              title="归类只改元数据，不会移动文件、不会重新嵌入、不影响已有向量"></el-alert>
+    <template #footer>
+      <el-button @click="groupDialog=false">取消</el-button>
+      <el-button v-if="grpTarget.group" type="danger" plain :loading="grpSaving"
+                 @click="doAssign(true)">取消归类</el-button>
+      <el-button type="primary" :loading="grpSaving" @click="doAssign(false)">确定</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- ==================== 修改 AI 建议 ==================== -->
+  <el-dialog v-model="candEditDialog" title="调整 AI 建议" width="500px">
+    <div style="font-size:12px;color:#909399;margin-bottom:12px">{{ candEdit.fname }}</div>
+    <el-form label-width="80px" label-position="left">
+      <el-form-item label="知识库">
+        <el-select v-model="candEdit.kb" filterable allow-create default-first-option style="width:100%">
+          <el-option v-for="k in kbs" :key="k.name" :label="k.name" :value="k.name"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="分组">
+        <el-select v-model="candEdit.group" filterable allow-create default-first-option clearable
+                   placeholder="留空 = 不分类（未分组）" style="width:100%">
+          <el-option v-for="g in curGroups" :key="g" :label="g" :value="g"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="标签">
+        <el-select v-model="candEdit.tags" multiple filterable allow-create default-first-option
+                   placeholder="回车添加" style="width:100%">
+          <el-option v-for="t in allTags" :key="t" :label="t" :value="t"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="candEditDialog=false">取消</el-button>
+      <el-button type="primary" :loading="candApplying" @click="applyCand([candEdit], false, true)">采纳</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- ==================== 知识库新建/重命名 ==================== -->
+  <el-dialog v-model="kbDialog" :title="kbForm.action === 'create' ? '新建知识库' : '重命名知识库'" width="430px">
+    <el-form label-width="70px" label-position="left">
+      <el-form-item label="名称">
+        <el-input v-model="kbForm.name" placeholder="例如：政策法规 / 项目文档 / 合同模板"></el-input>
+      </el-form-item>
+      <el-form-item label="说明">
+        <el-input v-model="kbForm.desc" type="textarea" :rows="2" placeholder="可留空"></el-input>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="kbDialog=false">取消</el-button>
+      <el-button type="primary" :loading="kbSaving" @click="saveKb">确定</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- ==================== 打标签 ==================== -->
+  <el-dialog v-model="tagDialog" title="设置标签" width="460px">
+    <div style="font-size:13px;color:#606266;margin-bottom:12px">
+      作用于已选中的 <b style="color:#409eff">{{ selected.length }}</b> 个文件
+    </div>
+    <el-radio-group v-model="tagMode" size="small" style="margin-bottom:12px">
+      <el-radio-button value="add">追加</el-radio-button>
+      <el-radio-button value="replace">覆盖</el-radio-button>
+      <el-radio-button value="remove">移除</el-radio-button>
+    </el-radio-group>
+    <el-select v-model="tagPicked" multiple filterable allow-create default-first-option
+               placeholder="输入标签后回车（可选已有或新建）" style="width:100%">
+      <el-option v-for="t in allTags" :key="t" :label="t" :value="t"></el-option>
+    </el-select>
+    <div v-if="allTags.length" class="tagpick" style="margin-top:12px">
+      <span style="font-size:12px;color:#909399">已有：</span>
+      <el-tag v-for="t in allTags" :key="t" size="small" effect="plain" style="cursor:pointer"
+              @click="tagPicked.includes(t)||tagPicked.push(t)">{{ t }}</el-tag>
+    </div>
+    <template #footer>
+      <el-button @click="tagDialog=false">取消</el-button>
+      <el-button type="primary" :loading="tagSaving" @click="saveTags">确定</el-button>
+    </template>
+  </el-dialog>
+</div>
+
+<script src="/vendor/vue.global.prod.js"></script>
+<script src="/vendor/element-plus.js"></script>
+<script src="/vendor/element-plus-icons.js"></script>
+<script>
+const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+const { ElMessage, ElMessageBox } = ElementPlus;
+
+const app = createApp({
+  setup() {
+    /* ---------- 基础 ---------- */
+    const icons = ElementPlusIconsVue;
+    let TOKEN = new URLSearchParams(location.search).get('token') || localStorage.getItem('kb_token') || '';
+    if (TOKEN) localStorage.setItem('kb_token', TOKEN);
+
+    const logged = ref(false);
+    const logging = ref(false);
+    const busy = ref(false);
+    const lf = reactive({ username: 'admin', password: '' });
+    const pwRef = ref(null);
+    const conn = reactive({ ok: false });
+
+    async function api(path, opts = {}) {
+      opts.headers = Object.assign({ 'Authorization': 'Bearer ' + TOKEN }, opts.headers || {});
+      const r = await fetch(path, opts);
+      if (r.status === 401) { const e = new Error('unauthorized'); e.code = 401; throw e; }
+      let d = null; try { d = await r.json(); } catch (e) {}
+      if (!r.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+      return d;
+    }
+
+    function focusPw() { const el = pwRef.value; if (el && el.focus) el.focus(); }
+
+    async function doLogin() {
+      if (!lf.username || !lf.password) { ElMessage.warning('请填写用户名和密码'); return; }
+      logging.value = true;
+      try {
+        const r = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: lf.username, password: lf.password })
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        TOKEN = d.token;
+        localStorage.setItem('kb_token', TOKEN);
+        lf.password = '';
+        logged.value = true;
+        ElMessage.success('登录成功');
+        nextTick(() => refresh());
+      } catch (e) { ElMessage.error(e.message); }
+      logging.value = false;
+    }
+
+    async function doLogout() {
+      try { await ElMessageBox.confirm('退出登录？（只清掉本机浏览器里的凭据）', '提示', { type: 'warning' }); }
+      catch (e) { return; }
+      localStorage.removeItem('kb_token');
+      TOKEN = '';
+      logged.value = false;
+    }
+
+    /* ---------- 状态 ---------- */
+    const st = reactive({
+      vectors: '-', files_total: '-', files_indexed: '-', files_pending: '-',
+      collection: '-', last_indexed: 0, indexing: false,
+      ocr_ready: false, embed_model: '-', vlm_model: '-'
+    });
+    const files = ref([]);
+
+    const statCards = computed(() => [
+      { k: '向量总数', v: st.vectors },
+      { k: '文档文件', v: st.files_total },
+      { k: '已索引', v: st.files_indexed },
+      { k: '待索引', v: st.files_pending },
+      { k: '集合', v: st.collection, small: true },
+      { k: '最近索引', v: st.last_indexed ? fmtTime(st.last_indexed).slice(5) : '—', small: true },
+    ]);
+
+    async function refresh() {
+      busy.value = true;
+      try {
+        const s = await api('/api/status');
+        Object.assign(st, s);
+        conn.ok = true;
+        const d = await api('/api/files');
+        files.value = d.files || [];
+        loadTree();
+        loadTags();
+        await loadKbs(true);
+        await loadGroupTree();
+        loadCandidates();
+      } catch (e) {
+        if (e.code === 401) { TOKEN = ''; localStorage.removeItem('kb_token'); logged.value = false; return; }
+        conn.ok = false;
+      }
+      busy.value = false;
+    }
+
+    /* ---------- 索引进度（v3：加权 + 心跳 + ETA + 失败提醒） ---------- */
+    const prog = reactive({
+      show: false, pct: 0, running: false, title: '', cls: '',
+      file: '', stepLabel: '', chunkInfo: '',
+      steps: [], chips: [], items: [], trigger: '',
+      // v3
+      hbCls: '', hbText: '—', etaText: '', chunkText: '', elapsedText: '',
+      saveHint: '', failedCount: 0, failedList: [],
+      stallLevel: '', stallSeconds: 0, lastBeat: 0, startedAt: 0,
+    });
+    const progShowFail = ref(false);
+    const showFailed = ref(false);
+    const failedItems = ref([]);
+    const logText = ref('');
+    const logShown = ref(false);
+    let wasRunning = false;
+    let failNotified = false;
+
+    const STEP_DEF = [
+      { key: 'parse',    name: '解析' },
+      { key: 'chunk',    name: '分块' },
+      { key: 'context',  name: '上下文' },
+      { key: 'embed',    name: '向量化' },
+      { key: 'store',    name: '入库' },
+      { key: 'classify', name: 'AI建议' },
+    ];
+    const STEP_LABEL = {
+      parse: '解析文档', chunk: '结构分块', context: '生成上下文',
+      embed: '向量化', store: '写入向量库', classify: 'AI 归档建议', done: '已完成',
+    };
+
+    function fmtDur(sec) {
+      sec = Math.max(0, Math.round(sec || 0));
+      if (sec < 60) return sec + ' 秒';
+      const m = Math.floor(sec / 60), s = sec % 60;
+      if (m < 60) return m + ' 分 ' + (s ? s + ' 秒' : '');
+      return Math.floor(m / 60) + ' 时 ' + (m % 60) + ' 分';
+    }
+
+    /* 每秒刷新"最后活动 / 已用时间"，让界面永远有东西在动 */
+    function tickProg() {
+      const p = prog;
+      if (!p.running) return;
+      if (p.lastBeat) {
+        const ago = Math.max(0, Date.now() / 1000 - p.lastBeat);
+        const perChunk = (p.perChunk || 14.4);
+        // 自适应阈值：正常一块 b 秒，超过 6 倍算慢、20 倍算卡
+        const slowAt = Math.max(60, perChunk * 6);
+        const deadAt = Math.max(180, perChunk * 20);
+        if (ago > deadAt) { p.hbCls = 'danger'; p.hbText = '可能已卡死 · ' + fmtDur(ago) + ' 无动静'; }
+        else if (ago > slowAt) { p.hbCls = 'warn'; p.hbText = '运行较慢 · ' + fmtDur(ago) + ' 无动静'; }
+        else { p.hbCls = ''; p.hbText = '运行中 · ' + fmtDur(ago) + ' 前有动静'; }
+      }
+      if (p.startedAt) p.elapsedText = fmtDur(Date.now() / 1000 - p.startedAt);
+    }
+    let tickTimer = null;
+    function startTick() {
+      if (tickTimer) return;
+      tickTimer = setInterval(tickProg, 1000);
+    }
+
+    function renderProg(p) {
+      if (!p || (!p.phase && !p.running)) { prog.show = false; return; }
+      prog.show = true;
+      prog.running = !!p.running;
+      prog.trigger = p.trigger || '';
+      prog.pct = Number(p.pct || 0);
+      prog.startedAt = p.started_at || 0;
+
+      if (prog.running) {
+        startTick();
+        const r = p.retry_round || 0;
+        let head = (p.trigger === 'cron' ? '定时任务正在索引' : '正在索引');
+        if (r) head = '正在重试（第 ' + r + '/' + (p.retry_total || 2) + ' 轮）';
+        prog.title = head + (p.total ? '（' + (p.done || 0) + ' / ' + p.total + ' 个文档）' : '');
+      } else if (p.stale) {
+        prog.title = '索引进程已中断';
+      } else {
+        prog.title = '索引完成';
+      }
+      prog.cls = prog.running ? '' : (p.failed ? 'fail' : 'done');
+
+      prog.file = p.current || '';
+      const step = p.step || (prog.running ? '' : 'done');
+      prog.stepLabel = STEP_LABEL[step] || (prog.running ? '准备中' : '');
+      prog.chunkInfo = p.chunks_total
+        ? '（第 ' + (p.chunks_done || 0) + ' / ' + p.chunks_total + ' 块）' : '';
+
+      // 心跳数据
+      prog.lastBeat = p.last_beat || p.updated_at || 0;
+      prog.perChunk = (p.timing || {}).per_chunk_seconds || 14.4;
+      if (!prog.running) {
+        prog.hbCls = p.failed ? 'danger' : 'dead';
+        prog.hbText = p.failed ? ('已结束 · ' + (p.failed || 0) + ' 个失败') : '已结束';
+      }
+      tickProg();
+
+      // ETA
+      if (prog.running && p.eta_seconds) {
+        prog.etaText = '预计还需约 ' + fmtDur(p.eta_seconds);
+      } else prog.etaText = '';
+
+      // 块进度
+      prog.chunkText = (prog.running && p.chunks_total)
+        ? (p.chunks_done || 0) + ' / ' + p.chunks_total + ' 块' : '';
+
+      // 自适应提示
+      const t2 = p.timing || {};
+      prog.saveHint = (t2.samples && t2.samples.docs)
+        ? ('已学习 ' + t2.samples.docs + ' 个文档的耗时规律') : '';
+
+      // 步骤条
+      const curIdx = STEP_DEF.findIndex(s => s.key === step);
+      prog.steps = STEP_DEF.map((s, i) => {
+        let state = 'todo';
+        if (!prog.running) state = 'done';
+        else if (curIdx >= 0) {
+          if (i < curIdx) state = 'done';
+          else if (i === curIdx) state = 'doing';
+        }
+        return { key: s.key, name: s.name, state: state };
+      });
+
+      // 汇总
+      const chips = [];
+      if (p.skipped) chips.push({ text: '跳过 ' + p.skipped + ' 个未变化' });
+      if (p.total_all) chips.push({ text: '目录共 ' + p.total_all + ' 个文件' });
+      if (p.chunks_written) chips.push({ text: '本次写入 ' + p.chunks_written + ' 块' });
+      if (p.vectors) chips.push({ text: '库内共 ' + p.vectors + ' 个向量' });
+      if (p.failed) chips.push({ text: '失败 ' + p.failed, type: 'danger' });
+      if (p.retry_round) chips.push({ text: '第 ' + p.retry_round + ' 轮重试', type: 'warning' });
+      prog.chips = chips;
+
+      // 队列（进行中 + 等待）
+      prog.items = (p.items || []).map(function (it) {
+        let text = '等待中';
+        if (it.status === 'done') text = '完成';
+        else if (it.status === 'failed') text = '失败';
+        else if (it.status === 'doing') {
+          const nm = STEP_DEF.find(s => s.key === it.step);
+          text = nm ? nm.name : '处理中';
+          if (it.chunks_total) text += ' ' + (it.chunks_done || 0) + '/' + it.chunks_total;
+        }
+        return {
+          name: it.name, status: it.status || 'pending', statusText: text,
+          chunks: it.chunks || 0, seconds: it.seconds || 0, reason: it.reason || '',
+        };
+      });
+
+      // 失败清单
+      const fl = p.failed_items || [];
+      prog.failedCount = fl.length || (p.failed || 0);
+      prog.failedList = fl.map(f => ({ name: f.name, reason: f.reason || '处理失败' }));
+    }
+
+    async function loadFailed() {
+      try {
+        const d = await api('/api/index/progress');
+        const fl = d.failed_items || [];
+        failedItems.value = fl.map(f => ({ name: f.name, reason: f.reason || '处理失败' }));
+      } catch (e) { /* ignore */ }
+    }
+
+    async function delFailed(f) {
+      try {
+        await ElMessageBox.confirm(
+          '确认删除文件「' + f.name + '」？\n删除后库里的向量也会一起清掉。',
+          '删除文件', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+      } catch (e) { return; }
+      try {
+        await api('/api/files/batch', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', sources: [f.name] })
+        });
+        ElMessage.success('已删除');
+        await loadFailed();
+        await refresh();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+
+    async function pollIndex() {
+      try {
+        const d = await api('/api/index/progress');
+        renderProg(d);
+        st.indexing = !!d.running;
+        if (d.running) {
+          wasRunning = true;
+          failNotified = false;
+          setTimeout(pollIndex, 1200);
+        } else {
+          if (wasRunning) {
+            wasRunning = false;
+            const nf = d.failed || (d.failed_items || []).length;
+            // 两层提醒：页面开着就弹窗
+            if (nf && !failNotified) {
+              failNotified = true;
+              ElNotification({
+                title: '索引完成，但有文件没成功',
+                message: nf + ' 个文件处理失败。点管理台顶部的红条可以查看并删除它们。',
+                type: 'warning', duration: 0, position: 'bottom-right',
+              });
+            } else if (!nf) {
+              ElMessage({ message: '索引完成，全部成功', type: 'success' });
+            }
+            // 完成后 5 秒再淡出（让你看到"完成"）
+            setTimeout(() => { prog.show = false; }, 5000);
+            await loadFailed();
+            refresh();
+          } else {
+            // 非本次启动：看一眼有没有历史失败（挂红条）
+            if (!failedItems.value.length) loadFailed();
+          }
+          setTimeout(pollIndex, 5000);
+        }
+      } catch (e) { setTimeout(pollIndex, 5000); }
+    }
+
+    async function startIndex() {
+      try {
+        await api('/api/index', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ backend: idxBackend.value })
+        });
+        st.indexing = true; wasRunning = true; failNotified = false;
+        showFailed.value = false;
+        setTimeout(pollIndex, 600);
+      } catch (e) {
+        ElMessage.error(e.message || '启动失败');
+      }
+    }
+
+
+
+    /* ---------- 上传 ---------- */
+    const pending = ref([]);
+    const dragging = ref(false);
+    const uploading = ref(false);
+    const fileRef = ref(null);
+
+    function pickFile() { fileRef.value && fileRef.value.click(); }
+    function onPick(e) { addFiles(e.target.files); e.target.value = ''; }
+    function onDrop(e) { dragging.value = false; addFiles(e.dataTransfer.files); }
+    function addFiles(list) {
+      const arr = Array.from(list || []);
+      pending.value = pending.value.concat(arr);
+      if (arr.length) ElMessage.success(`已选 ${arr.length} 个文件`);
+    }
+
+    async function doUpload() {
+      if (!pending.value.length) return;
+      uploading.value = true;
+      const fd = new FormData();
+      pending.value.forEach(f => fd.append('files', f, f.name));
+      try {
+        const r = await api('/api/upload', { method: 'POST', body: fd });
+        ElMessage.success(`上传成功 ${r.saved.length} 个` + (r.skipped.length ? `，跳过 ${r.skipped.length} 个不支持格式` : ''));
+        pending.value = [];
+        refresh();
+      } catch (e) { ElMessage.error('上传失败：' + e.message); }
+      uploading.value = false;
+    }
+
+    async function delFile(row) {
+      try { await ElMessageBox.confirm(`确认删除 ${row.name} ？`, '提示', { type: 'warning' }); }
+      catch (e) { return; }
+      try { await api('/api/files/' + encodeURIComponent(row.name), { method: 'DELETE' });
+            ElMessage.success('已删除'); refresh(); }
+      catch (e) { ElMessage.error('删除失败：' + e.message); }
+    }
+
+    /* ---------- 检索 ---------- */
+    const q = ref('');
+    const hits = ref(null);
+    const searching = ref(false);
+
+    async function doSearch() {
+      const query = (q.value || '').trim();
+      if (!query) { ElMessage.warning('请输入检索内容'); return; }
+      searching.value = true;
+      try {
+        const d = await api('/api/search', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, top_k: 6 })
+        });
+        hits.value = d.hits || [];
+      } catch (e) { ElMessage.error('检索失败：' + e.message); }
+      searching.value = false;
+    }
+
+    /* ---------- 工具 ---------- */
+    function fmtSize(n) {
+      if (n == null) return '-';
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1048576).toFixed(1) + ' MB';
+    }
+    function fmtTime(s) {
+      if (!s) return '—';
+      const d = new Date(s * 1000), p = x => String(x).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    /* ---------- 启动 ---------- */
+    onMounted(async () => {
+      try {
+        const r = await fetch('/api/logininfo');
+        const d = await r.json();
+        if (d.user_hint) lf.username = d.user_hint;
+      } catch (e) {}
+
+      if (!TOKEN) return;                      // 无 token → 停在登录页
+      try {
+        const r = await fetch('/api/status', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+        if (r.ok) { logged.value = true; refresh(); pollIndex(); startBackendPoll(); return; }
+        if (r.status === 401) {
+          localStorage.removeItem('kb_token'); TOKEN = '';
+          ElMessage.warning('登录凭据已失效，请重新登录');
+        }
+      } catch (e) { /* 后端不通，也先进去让用户看到"连接失败" */ logged.value = true; refresh(); pollIndex(); startBackendPoll(); }
+    });
+
+    /* ================= 目录树 ================= */
+    const treeData = ref([]);
+    const treeFilter = ref('');
+    function clearTreeFilter() { treeFilter.value = ''; }
+
+    async function loadTree() {
+      try {
+        const d = await api('/api/tree');
+        treeData.value = d.tree || [];
+      } catch (e) { treeData.value = []; }
+    }
+
+    function onTreeClick(data) {
+      // 目录节点 -> 以该目录为前缀过滤；文件节点 -> 直接定位该文件
+      if (data.dir) treeFilter.value = data.path + '/';
+      else { treeFilter.value = data.path; fileKw.value = data.name; }
+    }
+
+    /* ================= 标签 ================= */
+    const tagMap = ref({});
+    const allTags = ref([]);
+    const tagFilter = ref([]);
+    const tagDialog = ref(false);
+    const tagMode = ref('add');
+    const tagPicked = ref([]);
+    const tagSaving = ref(false);
+
+    async function loadTags() {
+      try {
+        const d = await api('/api/tags');
+        tagMap.value = d.map || {};
+        allTags.value = d.all || [];
+      } catch (e) { tagMap.value = {}; allTags.value = []; }
+    }
+
+    function openTagDialog() {
+      if (!selected.value.length) { ElMessage.warning('先选文件'); return; }
+      tagPicked.value = [];
+      tagMode.value = 'add';
+      tagDialog.value = true;
+    }
+
+    async function saveTags() {
+      if (!tagPicked.value.length && tagMode.value !== 'replace') {
+        ElMessage.warning('请选择或输入标签'); return;
+      }
+      tagSaving.value = true;
+      try {
+        const r = await api('/api/tags', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sources: selected.value.map(f => f.name),
+            tags: tagPicked.value,
+            mode: tagMode.value
+          })
+        });
+        tagMap.value = r.map || {};
+        allTags.value = [...new Set(Object.values(tagMap.value).flat())].sort();
+        ElMessage.success('标签已更新');
+        tagDialog.value = false;
+      } catch (e) { ElMessage.error('设置失败：' + e.message); }
+      tagSaving.value = false;
+    }
+
+    /* ================= 列表筛选 ================= */
+    const fileKw = ref('');
+    const filteredFiles = computed(() => {
+      let list = files.value;
+      list = list.filter(f => (f.kb || defaultKb.value) === curKb.value);
+      if (treeFilter.value) list = list.filter(f => f.name.startsWith(treeFilter.value));
+      if (groupFilter.value) {
+        const g = groupFilter.value;
+        const filesInGroup = new Set();
+        (function walk(ns) {
+          (ns || []).forEach(n => {
+            if (n.dir) {
+              if (n.path === g) (n.files || []).forEach(x => filesInGroup.add(x.name));
+              walk(n.children || []);
+            }
+          });
+        })(groupTree.value);
+        list = list.filter(f => filesInGroup.has(f.name));
+      }
+      if (fileKw.value.trim()) {
+        const kw = fileKw.value.trim().toLowerCase();
+        list = list.filter(f => f.name.toLowerCase().includes(kw));
+      }
+      if (tagFilter.value.length) {
+        list = list.filter(f => {
+          const ts = tagMap.value[f.name] || [];
+          return tagFilter.value.every(t => ts.includes(t));
+        });
+      }
+      return list;
+    });
+
+    /* ================= 多选 / 批量 ================= */
+    const fileTable = ref(null);
+    const selected = ref([]);
+    const batching = ref(false);
+    function onSelect(rows) { selected.value = rows; }
+    function clearSelection() { fileTable.value && fileTable.value.clearSelection(); selected.value = []; }
+
+    async function batchAction(action) {
+      if (!selected.value.length) return;
+      const names = selected.value.map(f => f.name);
+      const label = action === 'delete' ? '删除' : '重新索引';
+      try {
+        await ElMessageBox.confirm(
+          `确认对选中的 ${names.length} 个文件执行「${label}」？` +
+          (action === 'delete' ? '（会同时删除文件和库里的向量，不可恢复）' : '（会清掉旧向量，下次索引重跑）'),
+          '提示', { type: 'warning' });
+      } catch (e) { return; }
+      batching.value = true;
+      try {
+        const r = await api('/api/files/batch', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, sources: names })
+        });
+        const okN = (r.done || []).length, badN = (r.failed || []).length;
+        ElMessage.success(`${label}完成：成功 ${okN} 个` + (badN ? `，失败 ${badN} 个` : ''));
+        clearSelection();
+        await refresh(); await loadTree(); await loadTags();
+      } catch (e) { ElMessage.error(`${label}失败：` + e.message); }
+      batching.value = false;
+    }
+
+    /* ================= 分块管理 ================= */
+    const chunkDrawer = ref(false);
+    const chunkSrc = ref('');
+    const chunkTotal = ref(0);
+    const chunks = ref([]);
+    const chunkLoading = ref(false);
+    const chunkErr = ref('');
+    const saving = ref(false);
+    const adding = ref(false);
+    const newText = ref('');
+
+    async function openChunks(row) {
+      chunkSrc.value = row.name;
+      chunkDrawer.value = true;
+      adding.value = false; newText.value = '';
+      await loadChunks();
+    }
+
+    async function loadChunks() {
+      chunkLoading.value = true; chunkErr.value = '';
+      try {
+        const d = await api('/api/chunks?source=' + encodeURIComponent(chunkSrc.value));
+        chunks.value = (d.chunks || []).map(c => Object.assign({}, c, { _editing: false, _draft: '' }));
+        chunkTotal.value = d.total || 0;
+      } catch (e) { chunkErr.value = '加载失败：' + e.message; chunks.value = []; }
+      chunkLoading.value = false;
+    }
+
+    function editChunk(c) { c._draft = c.text; c._editing = true; }
+    function startAddChunk() { adding.value = true; newText.value = ''; }
+
+    async function saveChunk(c) {
+      const txt = (c._draft || '').trim();
+      if (!txt) { ElMessage.warning('内容不能为空'); return; }
+      saving.value = true;
+      ElMessage({ message: '正在重新嵌入…（约 8~12 秒）', type: 'info', duration: 2000 });
+      try {
+        await api('/api/chunks/' + c.id, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: txt })
+        });
+        c.text = txt; c.len = txt.length; c.edited = true; c._editing = false; c._draft = '';
+        ElMessage.success('已保存并重新嵌入');
+      } catch (e) { ElMessage.error('保存失败：' + e.message); }
+      saving.value = false;
+    }
+
+    async function delChunk(c) {
+      try {
+        await api('/api/chunks/' + c.id + '?source=' + encodeURIComponent(chunkSrc.value), { method: 'DELETE' });
+        ElMessage.success('已删除');
+        await loadChunks();
+      } catch (e) { ElMessage.error('删除失败：' + e.message); }
+    }
+
+    async function doAddChunk() {
+      const txt = (newText.value || '').trim();
+      if (!txt) { ElMessage.warning('内容不能为空'); return; }
+      saving.value = true;
+      ElMessage({ message: '正在嵌入新分块…（约 8~12 秒）', type: 'info', duration: 2000 });
+      try {
+        await api('/api/chunks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: chunkSrc.value, text: txt })
+        });
+        adding.value = false; newText.value = '';
+        ElMessage.success('已新增');
+        await loadChunks();
+      } catch (e) { ElMessage.error('新增失败：' + e.message); }
+      saving.value = false;
+    }
+    /* ================= 知识库 ================= */
+    const kbs = ref([]);
+    const curKb = ref('');
+    const defaultKb = ref('默认知识库');
+    const kbDialog = ref(false);
+    const kbSaving = ref(false);
+    const kbForm = reactive({ action: 'create', name: '', desc: '' });
+
+    async function loadKbs(keepCur) {
+      try {
+        const d = await api('/api/kb');
+        kbs.value = d.kbs || [];
+        defaultKb.value = d.default_kb || '默认知识库';
+        if (!keepCur || !kbs.value.some(x => x.name === curKb.value)) {
+          curKb.value = kbs.value.length ? kbs.value[0].name : defaultKb.value;
+        }
+      } catch (e) { kbs.value = []; }
+    }
+
+    function switchKb(name) {
+      curKb.value = name;
+      groupFilter.value = '';
+      loadGroupTree();
+    }
+
+    function openKbDialog(action) {
+      kbForm.action = action;
+      kbForm.name = action === 'rename' ? curKb.value : '';
+      kbForm.desc = '';
+      kbDialog.value = true;
+    }
+
+    async function saveKb() {
+      const name = (kbForm.name || '').trim();
+      if (!name) { ElMessage.warning('名称不能为空'); return; }
+      kbSaving.value = true;
+      try {
+        const payload = kbForm.action === 'create'
+          ? { action: 'create', name, desc: kbForm.desc }
+          : { action: 'rename', name: curKb.value, newName: name };
+        await api('/api/kb/op', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (kbForm.action === 'rename') curKb.value = name;
+        kbDialog.value = false;
+        ElMessage.success(kbForm.action === 'create' ? '已创建' : '已重命名');
+        await loadKbs(true); await loadGroupTree(); await refresh();
+      } catch (e) { ElMessage.error(e.message); }
+      kbSaving.value = false;
+    }
+
+    async function deleteKb() {
+      try {
+        await ElMessageBox.confirm(
+          `确认删除知识库「${curKb.value}」？\n库里的文档不会被删除，会移回「${defaultKb.value}」的未分组。`,
+          '提示', { type: 'warning' });
+      } catch (e) { return; }
+      try {
+        await api('/api/kb/op', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', name: curKb.value })
+        });
+        ElMessage.success('已删除');
+        await loadKbs(); await loadGroupTree(); await refresh();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+
+    /* ================= 分组树 ================= */
+    const leftView = ref('group');
+    const groupTree = ref([]);
+    const curGroups = ref([]);
+    const groupFilter = ref('');
+
+    function buildTree(nodes) {
+      return (nodes || []).map(n => ({
+        name: n.name,
+        path: n.path,
+        dir: true,
+        files: n.files || [],
+        children: [
+          ...buildTree(n.children || []),
+          ...((n.files || []).map(f => ({
+            name: f.name.split('/').pop(),
+            path: f.name,
+            dir: false,
+            info: f,
+          })))
+        ],
+      }));
+    }
+
+    async function loadGroupTree() {
+      try {
+        const d = await api('/api/kb/tree?kb=' + encodeURIComponent(curKb.value));
+        groupTree.value = buildTree(d.tree || []);
+        // 收集本库所有分组名（供下拉用）
+        const acc = [];
+        (function walk(ns) {
+          (ns || []).forEach(n => {
+            if (n.dir && n.path) acc.push(n.path);
+            walk(n.children || []);
+          });
+        })(groupTree.value);
+        curGroups.value = [...new Set(acc)].sort();
+      } catch (e) { groupTree.value = []; curGroups.value = []; }
+    }
+
+    function onGroupClick(data) {
+      groupFilter.value = data.dir ? (data.path || '') : data.path;
+    }
+
+    // 只允许「文件节点」拖到「目录节点」里
+    function allowGroupDrag(node) { return !node.data.dir; }
+    function allowGroupDrop(dragNode, dropNode, type) {
+      return !dragNode.data.dir && dropNode.data.dir && type === 'inner';
+    }
+
+    async function onGroupDrop(dragNode, dropNode) {
+      const src = dragNode.data.path;
+      const target = dropNode.data.path;
+      if (!src || dragNode.data.dir) return;
+      const label = target || '未分组';
+      try {
+        await api('/api/kb/assign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sources: [src],
+            kb: curKb.value,
+            group: target || null,
+            clearGroup: !target
+          })
+        });
+        ElMessage.success('已归入「' + label + '」');
+      } catch (e) {
+        ElMessage.error('归类失败：' + e.message);
+      }
+      await loadGroupTree();
+      await refresh();
+    }
+
+    /* ================= 整理分组 ================= */
+    const groupDialog = ref(false);
+    const grpSaving = ref(false);
+    const grpTarget = reactive({ kb: '', group: '' });
+
+    function openGroupDialog() {
+      if (!selected.value.length) { ElMessage.warning('先选文件'); return; }
+      grpTarget.kb = curKb.value;
+      grpTarget.group = '';
+      groupDialog.value = true;
+    }
+
+    async function doAssign(clear) {
+      grpSaving.value = true;
+      try {
+        await api('/api/kb/assign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sources: selected.value.map(f => f.name),
+            kb: grpTarget.kb,
+            group: clear ? null : (grpTarget.group || null),
+            clearGroup: !!clear
+          })
+        });
+        ElMessage.success(clear ? '已取消归类' : ('已归入「' + (grpTarget.group || '未分组') + '」'));
+        groupDialog.value = false;
+        clearSelection();
+        await loadGroupTree(); await loadKbs(true); await refresh();
+      } catch (e) { ElMessage.error(e.message); }
+      grpSaving.value = false;
+    }
+    /* ================= 分组增删改名 ================= */
+    const hoverNode = ref('');
+
+    async function newGroup(parentPath) {
+      const base = typeof parentPath === 'string' ? parentPath : '';
+      try {
+        const r = await ElMessageBox.prompt(
+          base ? ('在「' + base + '」下新建子分组') : '新建分组（支持「父/子」多级写法）',
+          '新建分组',
+          {
+            inputPlaceholder: '例如：法律类  或  法律类/案件管理',
+            inputValue: base ? (base + '/') : '',
+            confirmButtonText: '创建', cancelButtonText: '取消'
+          });
+        const name = ((r && r.value) || '').trim();
+        if (!name) return;
+        await api('/api/kb/group', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create', kb: curKb.value, group: name })
+        });
+        ElMessage.success('已创建分组：' + name);
+        await loadGroupTree();
+      } catch (e) { if (e !== 'cancel' && e !== 'close') ElMessage.error((e && e.message) || String(e)); }
+    }
+
+    async function renameGroup(node) {
+      if (!node.path) { ElMessage.warning('「未分组」是系统分组，不能重命名'); return; }
+      try {
+        const r = await ElMessageBox.prompt(
+          '重命名分组（其下子分组会一起改名；文档只改归类，不动文件）',
+          '重命名分组',
+          { inputValue: node.path, confirmButtonText: '确定', cancelButtonText: '取消' });
+        const nv = ((r && r.value) || '').trim();
+        if (!nv || nv === node.path) return;
+        await api('/api/kb/group', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'rename', kb: curKb.value, group: node.path, newName: nv })
+        });
+        ElMessage.success('已重命名为：' + nv);
+        await loadGroupTree(); await refresh();
+      } catch (e) { if (e !== 'cancel' && e !== 'close') ElMessage.error((e && e.message) || String(e)); }
+    }
+
+    async function delGroup(node) {
+      if (!node.path) { ElMessage.warning('「未分组」是系统分组，不能删除'); return; }
+      const n = (node.files || []).length;
+      try {
+        await ElMessageBox.confirm(
+          '确认删除分组「' + node.path + '」？\n' +
+          (n ? (n + ' 个文档会被移回「未分组」，') : '') +
+          '文档本身不会被删除，向量和标签也不受影响。',
+          '删除分组', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+      } catch (e) { return; }
+      try {
+        await api('/api/kb/group', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', kb: curKb.value, group: node.path })
+        });
+        ElMessage.success('已删除分组：' + node.path);
+        await loadGroupTree(); await refresh();
+      } catch (e) { ElMessage.error((e && e.message) || String(e)); }
+    }
+    /* ================= AI 候选：半自动归档 ================= */
+    const candidates = ref([]);
+    const candCount = computed(() => candidates.value.length);
+    const candSel = ref([]);
+    const candTable = ref(null);
+    const candRunning = ref(false);
+    const candApplying = ref(false);
+    const candJob = reactive({ running: false, done: 0, total: 0, current: '', log: '', ok: 0, fail: 0 });
+    const candEditDialog = ref(false);
+    const candEdit = reactive({ source: '', fname: '', kb: '', group: '', tags: [] });
+
+    async function loadCandidates() {
+      try {
+        const d = await api('/api/candidates');
+        candidates.value = d.candidates || [];
+      } catch (e) { candidates.value = []; }
+    }
+
+    function onCandSel(rows) { candSel.value = rows; }
+    function clearCandSel() { candTable.value && candTable.value.clearSelection(); candSel.value = []; }
+
+    async function pollCandJob() {
+      try {
+        const d = await api('/api/candidates/run');
+        Object.assign(candJob, {
+          running: d.running, done: d.done, total: d.total,
+          current: d.current || '', log: d.log || '', ok: d.ok, fail: d.fail
+        });
+        candRunning.value = d.running;
+        if (d.running) { setTimeout(pollCandJob, 1500); }
+        else {
+          await loadCandidates();
+          if (d.total) ElMessage.success(`分析完成：成功 ${d.ok}，失败 ${d.fail}`);
+        }
+      } catch (e) { candRunning.value = false; }
+    }
+
+    async function runClassify(force) {
+      try {
+        const r = await api('/api/candidates/run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: !!force })
+        });
+        if (r.note) { ElMessage.info(r.note); return; }
+        candRunning.value = true;
+        ElMessage.success('已开始分析 ' + r.total + ' 个文档');
+        pollCandJob();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+
+    function editCand(row) {
+      candEdit.source = row.source;
+      candEdit.fname = row.fname;
+      candEdit.kb = row.kb;
+      candEdit.group = row.group || '';
+      candEdit.tags = [...(row.tags || [])];
+      candEditDialog.value = true;
+    }
+
+    async function applyCand(rows, isBatch, fromEdit) {
+      if (!rows || !rows.length) return;
+      candApplying.value = true;
+      try {
+        if (fromEdit) {
+          await api('/api/candidates/apply', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source: candEdit.source, kb: candEdit.kb,
+              group: candEdit.group || null, tags: candEdit.tags
+            })
+          });
+          candEditDialog.value = false;
+          ElMessage.success('已采纳并归档');
+        } else {
+          for (const r of rows) {
+            await api('/api/candidates/apply', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                source: r.source, kb: r.kb, group: r.group || null, tags: r.tags
+              })
+            });
+          }
+          ElMessage.success(`已采纳 ${rows.length} 条`);
+          if (isBatch) clearCandSel();
+        }
+        await loadCandidates();
+        await loadKbs(true); await loadGroupTree(); await loadTags(); await refresh();
+      } catch (e) { ElMessage.error('采纳失败：' + e.message); }
+      candApplying.value = false;
+    }
+
+    async function dismissCand(rows, isBatch) {
+      if (!rows || !rows.length) return;
+      try {
+        await api('/api/candidates/dismiss', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sources: rows.map(r => r.source) })
+        });
+        ElMessage.success(`已忽略 ${rows.length} 条`);
+        if (isBatch) clearCandSel();
+        await loadCandidates();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    const tab = ref('files');
+    const idxBackend = ref('auto');
+
+    /* ---------- 嵌入后端连接状态 ---------- */
+    const be = reactive({
+      local: { ok: false, ms: null, detail: '' },
+      cloudflare: { ok: false, ms: null, detail: '' }
+    });
+    let beTimer = null;
+    function beTip(k) {
+      const b = be[k] || {};
+      const head = b.ok ? '已连接' : '未连接';
+      const ms = (b.ms != null) ? ' · ' + b.ms + 'ms' : '';
+      const det = b.detail ? ' · ' + b.detail : '';
+      return head + ms + det;
+    }
+    async function loadBackends() {
+      try {
+        const d = await api('/api/backends');
+        if (d && d.local) {
+          be.local = d.local;
+          be.cloudflare = d.cloudflare || { ok: false, ms: null, detail: '' };
+        }
+      } catch (e) { /* 静默：状态灯不打断主流程 */ }
+    }
+    function startBackendPoll() {
+      if (beTimer) return;
+      loadBackends();
+      beTimer = setInterval(loadBackends, 30000);
+    }
+
+    return { icons, logged, logging, busy, lf, pwRef, conn, doLogin, doLogout, focusPw,
+             st, files, statCards, refresh, prog, logText, logShown, startIndex, idxBackend,
+             be, beTip, loadBackends,
+             pending, dragging, uploading, fileRef, pickFile, onPick, onDrop, doUpload, delFile,
+             q, hits, searching, doSearch, fmtSize, fmtTime, tab,
+             treeData, treeFilter, clearTreeFilter, onTreeClick, loadTree,
+             tagMap, allTags, tagFilter, tagDialog, tagMode, tagPicked, tagSaving, openTagDialog, saveTags, loadTags,
+             fileKw, filteredFiles, fileTable, selected, onSelect, clearSelection, batchAction, batching,
+             chunkDrawer, chunkSrc, chunkTotal, chunks, chunkLoading, chunkErr, saving,
+             adding, newText, openChunks, loadChunks, editChunk, saveChunk, delChunk, startAddChunk, doAddChunk,
+             kbs, curKb, defaultKb, kbDialog, kbSaving, kbForm, loadKbs, switchKb, openKbDialog, saveKb, deleteKb,
+             leftView, groupTree, curGroups, groupFilter, loadGroupTree, onGroupClick,
+             allowGroupDrag, allowGroupDrop, onGroupDrop,
+             groupDialog, grpSaving, grpTarget, openGroupDialog, doAssign,
+             hoverNode, newGroup, renameGroup, delGroup,
+             candidates, candCount, candSel, candTable, candRunning, candApplying, candJob,
+             candEditDialog, candEdit, loadCandidates, onCandSel, clearCandSel,
+             runClassify, pollCandJob, applyCand, dismissCand, editCand };
+  }
+});
+
+app.use(ElementPlus);
+app.mount('#app');
+</script>
+</body>
+</html>
