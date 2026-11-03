@@ -1219,17 +1219,31 @@ async def api_upload(request):
     root = pathlib.Path(DOCS_DIR)
     root.mkdir(parents=True, exist_ok=True)
     saved, skipped = [], []
-    for field in form.values():
+
+    # 关键：必须用 multi_items()，不能只遍历 .values()
+    #   FormData 继承 ImmutableMultiDict，.values() 是 Mapping 语义 —— 按 key 遍历，
+    #   同名的 files 字段只会返回一次（最后那个），导致多文件上传只落 1 个。
+    #   multi_items() 才会把所有重复键值对逐个吐出来。
+    for _key, field in form.multi_items():
         fname = getattr(field, "filename", None)
         if not fname:
             continue
         name = pathlib.Path(fname).name
+        if not name or name.startswith("."):
+            continue
         if pathlib.Path(name).suffix.lower() not in SUPPORTED:
             skipped.append(name)
             continue
-        data = await field.read()
-        (root / name).write_bytes(data)
-        saved.append(name)
+        try:
+            data = await field.read()
+            if not data:
+                skipped.append(name)
+                continue
+            (root / name).write_bytes(data)
+            saved.append(name)
+        except Exception as e:
+            skipped.append(f"{name}（{type(e).__name__}）")
+    print(f"[上传] 收到字段 {len(form.multi_items())} 个，落盘 {len(saved)} 个，跳过 {len(skipped)} 个", flush=True)
     return JSONResponse({"saved": saved, "skipped": skipped})
 
 
