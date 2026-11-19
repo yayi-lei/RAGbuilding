@@ -1137,14 +1137,15 @@ async def api_ai_settings(request):
         except Exception as e:
             return JSONResponse({"error": f"保存失败：{type(e).__name__}: {e}"}, status_code=400)
         st = await asyncio.to_thread(ai_settings.status, True)
-        return JSONResponse({"ok": True, "settings": pub, "status": st})
+        return JSONResponse({"ok": True, "settings": pub, "status": st,
+                             "ai": st.get("ai"), "ocr": st.get("ocr")})
     return JSONResponse(ai_settings.public())
 
 
 async def api_ai_status(request):
     """首页状态灯：当前模型到底还能不能用。?force=1 跳过缓存。"""
     force = request.query_params.get("force") in ("1", "true", "yes")
-    st = await asyncio.to_thread(ai_settings.status, force)
+    st = dict(await asyncio.to_thread(ai_settings.status, force))
     st["settings"] = ai_settings.public()
     return JSONResponse(st)
 
@@ -1157,15 +1158,17 @@ async def api_ai_test(request):
             body = await request.json()
         except Exception:
             body = {}
+    kind = "ocr" if str(body.get("target") or "").lower() == "ocr" else "ai"
     cfg = dict(ai_settings.current())
-    for k in ("base_url", "model"):
+    for k in ("base_url", "model", "ocr_model"):
         if body.get(k):
             cfg[k] = str(body[k]).strip()
     if body.get("api_key"):
         cfg["api_key"] = str(body["api_key"]).strip()
-    if body.get("enabled") is not None:
-        cfg["enabled"] = bool(body["enabled"])
-    return JSONResponse(await asyncio.to_thread(ai_settings.probe, cfg))
+    for k in ("enabled", "ocr_enabled"):
+        if body.get(k) is not None:
+            cfg[k] = bool(body[k])
+    return JSONResponse(await asyncio.to_thread(ai_settings.probe, cfg, kind))
 
 
 async def api_ai_models(request):
@@ -1258,6 +1261,8 @@ async def api_status(request):
         print(f"qdrant 异常: {e}")
     files = _scan_docs()
     state = _load_state()
+    cur = ai_settings.current()
+    sc = ai_settings.status_cached() or {}
     newest = 0
     if state:
         newest = max((v.get("indexed_at", 0) for v in state.values()), default=0)
@@ -1270,11 +1275,14 @@ async def api_status(request):
         "files_pending": sum(1 for f in files if not f["indexed"]),
         "last_indexed": newest,
         "indexing": JOB["running"],
-        "ocr_ready": bool(os.getenv("VLM_API_KEY")),
+        "ocr_ready": bool(cur["api_key"]) and bool(cur["ocr_enabled"]),
         "embed_model": os.getenv("EMBED_MODEL", ""),
-        "vlm_model": ai_settings.current()["model"],
-        "ai_enabled": ai_settings.current()["enabled"],
-        "ai": ai_settings.status_cached(),
+        "vlm_model": ai_settings.model_of(cur, "ocr"),
+        "ai_model": ai_settings.model_of(cur, "ai"),
+        "ai_enabled": bool(cur["enabled"]),
+        "ocr_enabled": bool(cur["ocr_enabled"]),
+        "ai": sc.get("ai"),
+        "ocr_state": sc.get("ocr"),
     })
 
 

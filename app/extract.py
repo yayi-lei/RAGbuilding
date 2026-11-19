@@ -13,12 +13,12 @@ import subprocess
 
 import httpx
 
+import ai_settings  # 网关 / 模型配置运行时可改（管理台「AI 建议设置」）
+
 OLD_FORMATS = {".doc": "docx", ".xls": "xlsx", ".ppt": "pptx"}
 
-VLM_BASE_URL = os.getenv("VLM_BASE_URL", "").rstrip("/")
-VLM_API_KEY = os.getenv("VLM_API_KEY", "")
-VLM_MODEL = os.getenv("VLM_MODEL", "moma/glm-5.3-flash")
 OCR_MIN_CHARS = int(os.getenv("OCR_MIN_CHARS", "50"))
+OCR_TIMEOUT = float(os.getenv("OCR_TIMEOUT", "300"))   # 单页识别超时（秒）
 OCR_DPI = int(os.getenv("OCR_DPI", "150"))
 OCR_CACHE = os.getenv("OCR_CACHE", "/ocr_cache")
 TMP_DIR = os.getenv("TMP_DIR", "/tmp/ragtmp")
@@ -119,12 +119,23 @@ def _pdf_to_images(path, outdir, dpi):
 
 
 def _vlm_page(img_path):
-    """把一页图片发给多模态模型，返回 Markdown。"""
-    if not VLM_BASE_URL or not VLM_API_KEY:
-        raise RuntimeError("未配置 VLM_BASE_URL / VLM_API_KEY")
+    """把一页图片发给多模态模型，返回 Markdown。
+
+    配置每次现取（管理台「AI 建议设置」→ 扫描件 OCR），网关换模型名不用重建容器。
+    """
+    cfg = ai_settings.current()
+    if not ai_settings.enabled_of(cfg, "ocr"):
+        raise RuntimeError("扫描件 OCR 已在设置里关闭（管理台 → AI 建议设置）")
+    base_url = (cfg.get("base_url") or "").rstrip("/")
+    api_key = cfg.get("api_key") or ""
+    model = ai_settings.model_of(cfg, "ocr")
+    if not base_url or not api_key:
+        raise RuntimeError("未配置接口地址 / API Key（管理台 → AI 建议设置）")
+    if not model:
+        raise RuntimeError("还没选扫描件 OCR 模型（管理台 → AI 建议设置）")
     b64 = base64.b64encode(pathlib.Path(img_path).read_bytes()).decode()
     payload = {
-        "model": VLM_MODEL,
+        "model": model,
         "messages": [{
             "role": "user",
             "content": [
@@ -135,9 +146,9 @@ def _vlm_page(img_path):
         "max_tokens": 4096,
         "temperature": 0,
     }
-    headers = {"Authorization": f"Bearer {VLM_API_KEY}", "Content-Type": "application/json"}
-    with httpx.Client(timeout=300) as c:
-        r = c.post(f"{VLM_BASE_URL}/chat/completions", headers=headers, json=payload)
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    with httpx.Client(timeout=OCR_TIMEOUT) as c:
+        r = c.post(f"{base_url}/chat/completions", headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()
     return (data["choices"][0]["message"]["content"] or "").strip()
@@ -145,6 +156,9 @@ def _vlm_page(img_path):
 
 def ocr_pdf(path, file_hash):
     """扫描件走多模态 OCR：逐页识别 + 磁盘缓存（重跑不重复花钱）。"""
+    ok, why = ai_settings.usable("ocr", check=True)
+    if not ok:
+        raise RuntimeError(why)
     cache = pathlib.Path(OCR_CACHE) / file_hash
     cache.mkdir(parents=True, exist_ok=True)
     tmp = _tmpdir() / f"ocr_{file_hash[:12]}"
@@ -302,7 +316,11 @@ def extract_text(path):
         pages = _pdf_pages(path) or 1
         if len(txt) < OCR_MIN_CHARS * pages:
             h = hashlib.sha256(path.read_bytes()).hexdigest()[:32]
-            ocr_txt, fresh = ocr_pdf(path, h)
+            try:
+                ocr_txt, fresh = ocr_pdf(path, h)
+            except Exception as e:
+                print(f"    [扫描件] OCR 用不了：{e}", flush=True)
+                return txt, f"扫描件，OCR 不可用：{human_error(e)}"
             if ocr_txt:
                 return ocr_txt, f"vlm-ocr ({pages}页, 本次新识别{fresh}页)"
             return txt, "扫描件，OCR 没能识别出文字"

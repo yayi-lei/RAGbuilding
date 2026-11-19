@@ -224,10 +224,12 @@
       <el-tag :type="conn.ok ? 'success' : 'danger'" effect="light" size="small">
         {{ conn.ok ? '已连接' : '连接失败' }}
       </el-tag>
-      <el-tag v-if="st.ocr_ready" type="success" effect="plain" size="small">
-        OCR · {{ st.vlm_model }}
-      </el-tag>
-      <el-tag v-else type="info" effect="plain" size="small">OCR 未配置</el-tag>
+      <el-tooltip :content="ocrTip()" placement="bottom" :show-after="200">
+        <el-tag :type="ocrTagType()" effect="light" size="small" style="cursor:pointer" @click="openAiSettings('ocr')">
+          <span class="dot" :class="ocr.ok === true ? 'on' : (ocr.ok === false ? 'off' : 'idle')"></span>
+          扫描件 OCR · {{ ocr.model || '未配置' }}<span v-if="ocr.ok !== true">{{ ocrShort() }}</span>
+        </el-tag>
+      </el-tooltip>
       <el-tag type="primary" effect="plain" size="small">嵌入 {{ st.embed_model }}</el-tag>
       <el-tooltip :content="aiTip()" placement="bottom" :show-after="200">
         <el-tag :type="aiTagType()" effect="light" size="small" style="cursor:pointer" @click="openAiSettings">
@@ -262,6 +264,16 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <!-- 扫描件 OCR 模型失效：任何标签页都能一眼看到 -->
+      <el-alert v-if="ocr.ok === false && ocr.code !== 'disabled'" type="warning" :closable="false" show-icon
+                style="margin-bottom:12px"
+                :title="'扫描件 OCR 模型不可用：' + (ocr.model || '-') + roleShort(ocr)">
+        <div style="font-size:12px;line-height:1.7">
+          {{ ocr.error || '去「AI 模型设置」点「测试 OCR」看看' }}
+          <el-button size="small" type="primary" link @click="openAiSettings('ocr')">去设置</el-button>
+        </div>
+      </el-alert>
 
       <!-- Tabs -->
       <el-card class="panel" shadow="never">
@@ -841,17 +853,17 @@
 
   <!-- ==================== 知识库新建/重命名 ==================== -->
   <!-- ===== AI 建议设置（模型可改，改完立即生效） ===== -->
-  <el-dialog v-model="aiDlg" title="AI 建议设置" width="580px">
-    <el-alert :type="ai.ok === true ? 'success' : (ai.ok === false ? 'error' : 'info')"
-              :closable="false" show-icon style="margin-bottom:14px"
-              :title="ai.ok === true ? ('当前模型可用：' + ai.model + (ai.latency_ms != null ? ' · ' + ai.latency_ms + 'ms' : ''))
-                      : (ai.ok === false ? ('当前模型不可用：' + (ai.error || ai.code || '未知原因'))
-                      : ('还没检测：' + (ai.model || '')))"
-              :description="ai.checked_at ? ('上次检测 ' + fmtTime(ai.checked_at)) : ''">
-    </el-alert>
+  <el-dialog v-model="aiDlg" title="AI 模型设置" width="640px">
+    <el-alert :type="roleTag(ai)" :closable="false" show-icon style="margin-bottom:8px"
+              :title="'AI 建议：' + roleText(ai)"
+              :description="ai.checked_at ? ('上次检测 ' + fmtTime(ai.checked_at)) : ''"></el-alert>
+    <el-alert :type="roleTag(ocr)" :closable="false" show-icon style="margin-bottom:14px"
+              :title="'扫描件 OCR：' + roleText(ocr)"
+              :description="ocr.checked_at ? ('上次检测 ' + fmtTime(ocr.checked_at)) : ''"></el-alert>
 
-    <el-form label-width="98px">
-      <el-form-item label="启用">
+    <el-form label-width="108px">
+      <el-divider content-position="left">网关（两个功能共用）</el-divider>
+      <el-form-item label="AI 建议启用">
         <el-switch v-model="aiForm.enabled"></el-switch>
         <span style="margin-left:10px;font-size:12px;color:#909399">关掉后「AI 建议分组」不再调模型</span>
       </el-form-item>
@@ -871,11 +883,28 @@
           模型名必须和网关上的一致——网关换了名字，这里也要跟着改。点左下角「拉取模型列表」可直接从网关读取。
         </div>
       </el-form-item>
+
+      <el-divider content-position="left">扫描件 OCR（要能看图的模型）</el-divider>
+      <el-form-item label="OCR 启用">
+        <el-switch v-model="aiForm.ocr_enabled"></el-switch>
+        <span style="margin-left:10px;font-size:12px;color:#909399">关掉后扫描件 PDF 只解析文本层</span>
+      </el-form-item>
+      <el-form-item label="OCR 模型">
+        <el-select v-model="aiForm.ocr_model" filterable allow-create default-first-option clearable
+                   style="width:100%" placeholder="留空 = 沿用上面「AI 建议」的模型">
+          <el-option v-for="m in aiModels" :key="m" :label="m" :value="m"></el-option>
+        </el-select>
+        <div style="font-size:12px;color:#909399;line-height:1.6;margin-top:2px">
+          扫描件逐页转文字用的就是这个模型，必须支持图片输入。「测试 OCR」会真发一张图，
+          能验证它到底看不看得懂图（纯文本模型在这里会直接报「不支持图片」）。
+        </div>
+      </el-form-item>
     </el-form>
 
     <template #footer>
       <el-button :loading="aiLoadingModels" @click="loadAiModels(false)">拉取模型列表</el-button>
-      <el-button :loading="aiTesting" @click="testAi">测试连接</el-button>
+      <el-button :loading="aiTesting" @click="testAi('ai')">测试 AI 建议</el-button>
+      <el-button :loading="ocrTesting" @click="testAi('ocr')">测试 OCR</el-button>
       <el-button type="primary" :loading="aiSaving" @click="saveAi">保存</el-button>
     </template>
   </el-dialog>
@@ -1930,17 +1959,24 @@ const app = createApp({
       ok: null, model: '', base_url: '', latency_ms: null, code: '', error: '',
       checked_at: 0, enabled: true, api_key_set: false, api_key_masked: ''
     });
+    // 扫描件 OCR：同一套网关，另一个模型（必须多模态），状态单独跟
+    const ocr = reactive({
+      ok: null, model: '', latency_ms: null, code: '', error: '', checked_at: 0
+    });
     const aiDlg = ref(false);
-    const aiForm = reactive({ base_url: '', api_key: '', model: '', enabled: true });
+    const aiForm = reactive({ base_url: '', api_key: '', model: '', enabled: true,
+                              ocr_model: '', ocr_enabled: true });
     const aiModels = ref([]);
     const aiTesting = ref(false), aiSaving = ref(false), aiLoadingModels = ref(false);
+    const ocrTesting = ref(false);
     let aiTimer = null;
 
-    function aiShort() {
-      if (ai.ok === true) return '';
-      if (ai.ok !== false) return ' · 检测中…';
-      const c = ai.code || '';
+    function roleShort(o) {
+      if (o.ok === true) return '';
+      if (o.ok !== false) return ' · 检测中…';
+      const c = o.code || '';
       if (c === 'model_not_found') return ' · 模型名已失效';
+      if (c === 'not_vision') return ' · 不支持图片';
       if (c === 'auth') return ' · 认证失败';
       if (c === 'network') return ' · 连不上';
       if (c === 'disabled') return ' · 已关闭';
@@ -1948,23 +1984,35 @@ const app = createApp({
       if (c === 'server_error') return ' · 网关报错';
       return ' · 不可用';
     }
-    function aiTagType() { return ai.ok === true ? 'success' : (ai.ok === false ? 'danger' : 'info'); }
-    function aiTip() {
-      const head = ai.ok === true ? 'AI 建议模型可用'
-                 : (ai.ok === false ? 'AI 建议模型不可用' : '正在检测 AI 建议模型');
-      const ms = (ai.ok === true && ai.latency_ms != null) ? ' · ' + ai.latency_ms + 'ms' : '';
-      const det = ai.error ? ' · ' + ai.error : '';
-      const t = ai.checked_at ? '（检测于 ' + fmtTime(ai.checked_at) + '）' : '';
-      return head + '：' + (ai.model || '-') + ms + det + t + ' —— 点开可改模型';
+    function roleTag(o) { return o.ok === true ? 'success' : (o.ok === false ? 'danger' : 'info'); }
+    function roleText(o) {
+      const ms = (o.ok === true && o.latency_ms != null) ? ' · ' + o.latency_ms + 'ms' : '';
+      if (o.ok === true) return '可用 · ' + (o.model || '-') + ms;
+      if (o.ok === false) return '不可用 · ' + (o.model || '-') + '：' + (o.error || o.code || '未知原因');
+      return '检测中… ' + (o.model || '');
     }
+    function roleTip(o, label) {
+      const head = o.ok === true ? label + '模型可用'
+                 : (o.ok === false ? label + '模型不可用' : '正在检测' + label + '模型');
+      const ms = (o.ok === true && o.latency_ms != null) ? ' · ' + o.latency_ms + 'ms' : '';
+      const det = o.error ? ' · ' + o.error : '';
+      const t = o.checked_at ? '（检测于 ' + fmtTime(o.checked_at) + '）' : '';
+      return head + '：' + (o.model || '-') + ms + det + t + ' —— 点开可改模型';
+    }
+    function aiShort() { return roleShort(ai); }
+    function ocrShort() { return roleShort(ocr); }
+    function aiTagType() { return roleTag(ai); }
+    function ocrTagType() { return roleTag(ocr); }
+    function aiTip() { return roleTip(ai, 'AI 建议'); }
+    function ocrTip() { return roleTip(ocr, '扫描件 OCR'); }
 
     async function loadAi(force) {
       try {
         const d = await api('/api/ai/status' + (force ? '?force=1' : ''));
-        Object.assign(ai, { ok: d.ok === undefined ? null : d.ok, model: d.model, base_url: d.base_url,
-                            latency_ms: d.latency_ms, code: d.code, error: d.error,
-                            checked_at: d.checked_at });
+        if (d.ai) Object.assign(ai, d.ai);
+        if (d.ocr) Object.assign(ocr, d.ocr);
         if (d.settings) Object.assign(ai, { enabled: d.settings.enabled,
+                                            base_url: d.settings.base_url,
                                             api_key_set: d.settings.api_key_set,
                                             api_key_masked: d.settings.api_key_masked });
       } catch (e) { /* 状态灯不打断主流程 */ }
@@ -1983,8 +2031,11 @@ const app = createApp({
         aiForm.base_url = s.base_url || '';
         aiForm.model = s.model || '';
         aiForm.enabled = s.enabled !== false;
+        aiForm.ocr_model = s.ocr_model || '';
+        aiForm.ocr_enabled = s.ocr_enabled !== false;
         Object.assign(ai, { model: s.model, base_url: s.base_url, enabled: s.enabled,
                             api_key_set: s.api_key_set, api_key_masked: s.api_key_masked });
+        Object.assign(ocr, { model: s.ocr_model || s.model || '' });
       } catch (e) { ElMessage.error('读取设置失败：' + e.message); }
       if (!aiModels.value.length) loadAiModels(true);
       loadAi(false);
@@ -2001,49 +2052,60 @@ const app = createApp({
       aiLoadingModels.value = false;
     }
 
-    async function testAi() {
-      aiTesting.value = true;
+    async function testAi(target) {
+      const isOcr = target === 'ocr';
+      const box = isOcr ? ocr : ai;
+      const flag = isOcr ? ocrTesting : aiTesting;
+      const label = isOcr ? '扫描件 OCR' : 'AI 建议';
+      flag.value = true;
       try {
         const d = await api('/api/ai/test', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base_url: aiForm.base_url, model: aiForm.model,
-                                 api_key: aiForm.api_key, enabled: aiForm.enabled })
+          body: JSON.stringify({ target: isOcr ? 'ocr' : 'ai',
+                                 base_url: aiForm.base_url, api_key: aiForm.api_key,
+                                 model: aiForm.model, enabled: aiForm.enabled,
+                                 ocr_model: aiForm.ocr_model, ocr_enabled: aiForm.ocr_enabled })
         });
-        Object.assign(ai, { ok: !!d.ok, latency_ms: d.latency_ms, error: d.error,
-                            code: d.code, model: d.model, base_url: d.base_url,
-                            checked_at: d.checked_at });
+        Object.assign(box, { ok: !!d.ok, latency_ms: d.latency_ms, error: d.error,
+                             code: d.code, model: d.model, checked_at: d.checked_at });
         if (d.ok) {
-          ElMessage.success('可用 · ' + d.model + (d.latency_ms != null ? ' · ' + d.latency_ms + 'ms' : ''));
+          ElMessage.success(label + ' 可用 · ' + d.model + (d.latency_ms != null ? ' · ' + d.latency_ms + 'ms' : ''));
         } else {
-          ElMessageBox.alert(d.error || d.code || '未知原因', '这个模型现在用不了', { type: 'error' });
+          ElMessageBox.alert(d.error || d.code || '未知原因', label + ' 这个模型现在用不了', { type: 'error' });
         }
       } catch (e) { ElMessage.error(e.message); }
-      aiTesting.value = false;
+      flag.value = false;
     }
 
     async function saveAi() {
-      if (aiForm.enabled && !aiForm.model) { ElMessage.warning('请先选/填模型名'); return; }
+      if (aiForm.enabled && !aiForm.model) { ElMessage.warning('请先选/填「AI 建议」的模型名'); return; }
+      if (aiForm.ocr_enabled && !aiForm.ocr_model && !aiForm.model) {
+        ElMessage.warning('扫描件 OCR 要用多模态模型，请选一个（或把 OCR 关掉）'); return;
+      }
       aiSaving.value = true;
       try {
         const d = await api('/api/ai/settings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ base_url: aiForm.base_url, model: aiForm.model,
-                                 api_key: aiForm.api_key, enabled: aiForm.enabled })
+                                 api_key: aiForm.api_key, enabled: aiForm.enabled,
+                                 ocr_model: aiForm.ocr_model, ocr_enabled: aiForm.ocr_enabled })
         });
-        if (d.status) {
-          Object.assign(ai, { ok: !!d.status.ok, latency_ms: d.status.latency_ms,
-                              error: d.status.error, code: d.status.code,
-                              model: d.status.model, base_url: d.status.base_url,
-                              checked_at: d.status.checked_at });
-        }
+        if (d.ai) Object.assign(ai, d.ai);
+        if (d.ocr) Object.assign(ocr, d.ocr);
         if (d.settings) Object.assign(ai, { enabled: d.settings.enabled,
                                             api_key_set: d.settings.api_key_set,
                                             api_key_masked: d.settings.api_key_masked });
-        if (d.status && d.status.ok) {
+        const aiOk = !!(d.ai && d.ai.ok) || aiForm.enabled === false;
+        const ocrOk = !!(d.ocr && d.ocr.ok) || aiForm.ocr_enabled === false;
+        if (aiOk && ocrOk) {
           ElMessage.success('已保存，模型验证通过');
           aiDlg.value = false;
         } else {
-          ElMessage.warning('已保存，但检测没通过：' + ((d.status && d.status.error) || '未知原因'));
+          const bad = [];
+          if (!aiOk) bad.push('AI 建议：' + ((d.ai && d.ai.error) || '未知原因'));
+          if (!ocrOk) bad.push('扫描件 OCR：' + ((d.ocr && d.ocr.error) || '未知原因'));
+          ElMessageBox.alert(bad.join('<br>'), '已保存，但检测没通过',
+                             { type: 'warning', dangerouslyUseHTMLString: true });
         }
         aiForm.api_key = '';
       } catch (e) { ElMessage.error('保存失败：' + e.message); }
@@ -2068,8 +2130,9 @@ const app = createApp({
              candidates, candCount, candSel, candTable, candRunning, candApplying, candJob,
              candEditDialog, candEdit, loadCandidates, onCandSel, clearCandSel,
              runClassify, pollCandJob, applyCand, dismissCand, editCand,
-             ai, aiDlg, aiForm, aiModels, aiTesting, aiSaving, aiLoadingModels,
-             aiShort, aiTagType, aiTip, loadAi, openAiSettings, loadAiModels, testAi, saveAi };
+             ai, ocr, aiDlg, aiForm, aiModels, aiTesting, ocrTesting, aiSaving, aiLoadingModels,
+             aiShort, ocrShort, aiTagType, ocrTagType, aiTip, ocrTip, roleShort, roleTag, roleText,
+             loadAi, openAiSettings, loadAiModels, testAi, saveAi };
   }
 });
 
