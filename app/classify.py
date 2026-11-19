@@ -4,7 +4,9 @@
   1. 把「已有分组清单」一起给模型，要求**优先复用**，逼它别乱建新组；
   2. 拿不准就返回 null —— 落到「未分组」等人工处理，宁可留白；
   3. 有重试与降级：第一次带正文，失败则只用文件名再试一次；
-  4. 输出必须是 JSON，解析失败视为失败（不猜）。
+  4. 输出必须是 JSON，解析失败视为失败（不猜）；
+  5. 模型/地址/Key 一律从 ai_settings 现读（管理台可改，改完立即生效），
+     网关换了模型名不用重建容器。
 """
 import json
 import os
@@ -13,15 +15,9 @@ import time
 
 import httpx
 
-VLM_BASE_URL = os.getenv("VLM_BASE_URL", "").rstrip("/")
-VLM_API_KEY = os.getenv("VLM_API_KEY", "")
-VLM_MODEL = os.getenv("VLM_MODEL", "zhanlu/glm-5.3-flash")
-CLASSIFY_TIMEOUT = int(os.getenv("CLASSIFY_TIMEOUT", "120"))
-CLASSIFY_ENABLED = os.getenv("CLASSIFY_ENABLED", "1") not in ("0", "false", "False")
+import ai_settings
+
 HEAD_CHARS = int(os.getenv("CLASSIFY_HEAD_CHARS", "1200"))
-# 注意：glm-5.3-flash 会先输出 reasoning_content（思考链），400 会被思考吃光导致 content 为空。
-# 实测 2000 足够；保险起见截断时还会自动加倍重试。
-MAX_TOKENS = int(os.getenv("CLASSIFY_MAX_TOKENS", "2000"))
 
 PROMPT = """你是企业文档管理员，负责把新文档归档。请判断它应该放进哪个分组。
 
@@ -81,19 +77,22 @@ def _extract_json(s):
     return None
 
 
-def _call(prompt, max_tokens=None):
-    """返回 (content, finish_reason)。"""
-    if not (VLM_BASE_URL and VLM_API_KEY):
+def _call(prompt, max_tokens=None, cfg=None):
+    """返回 (content, finish_reason)。配置每次现读。"""
+    cfg = cfg or ai_settings.current()
+    if not cfg.get("enabled"):
+        raise RuntimeError("AI 建议已在设置里关闭")
+    if not (cfg.get("base_url") and cfg.get("api_key")):
         raise RuntimeError("未配置 VLM_BASE_URL / VLM_API_KEY")
     body = {
-        "model": VLM_MODEL,
+        "model": cfg["model"],
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": int(max_tokens or MAX_TOKENS),
+        "max_tokens": int(max_tokens or cfg.get("max_tokens") or 2000),
         "temperature": 0,
     }
-    headers = {"Authorization": f"Bearer {VLM_API_KEY}", "Content-Type": "application/json"}
-    with httpx.Client(timeout=CLASSIFY_TIMEOUT) as c:
-        r = c.post(f"{VLM_BASE_URL}/chat/completions", headers=headers, json=body)
+    headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
+    with httpx.Client(timeout=float(cfg.get("timeout") or 120)) as c:
+        r = c.post(f"{cfg['base_url']}/chat/completions", headers=headers, json=body)
         r.raise_for_status()
         data = r.json()
     ch = (data.get("choices") or [{}])[0]
@@ -101,8 +100,27 @@ def _call(prompt, max_tokens=None):
     return content, ch.get("finish_reason")
 
 
+def _kind_of(err):
+    """把失败原因归类，前端好显示人话。"""
+    low = (err or "").lower()
+    if "not supported by any configured account" in low or "model_not_found" in low:
+        return "model_not_found"
+    if "已在设置里关闭" in (err or ""):
+        return "disabled"
+    if "401" in low or "403" in low or "unauthorized" in low:
+        return "auth"
+    if "未配置" in (err or ""):
+        return "unconfigured"
+    if "timeout" in low or "connect" in low or "getaddrinfo" in low:
+        return "network"
+    return "error"
+
+
 def classify(source, head_text, existing_groups, kb_names):
     """返回 {"kb","group","tags","confidence","model","seconds"} 或 None。"""
+    cfg = ai_settings.current()
+    model = cfg.get("model") or ""
+    mt = int(cfg.get("max_tokens") or 2000)
     fname = source.split("/")[-1]
     groups_txt = "\n".join(f"- {g}" for g in (existing_groups or [])) or "（暂无已有分组）"
     kbs_txt = "、".join(kb_names or []) or "（无）"
@@ -119,17 +137,17 @@ def classify(source, head_text, existing_groups, kb_names):
     last_err = ""
     for i, prompt in enumerate(attempts):
         try:
-            raw, fr = _call(prompt)
+            raw, fr = _call(prompt, mt, cfg=cfg)
             # content 为空且被截断（思考链吃光了配额）→ 加倍 max_tokens 重试
             if (not raw) and fr == "length":
-                raw, fr = _call(prompt, MAX_TOKENS * 2)
+                raw, fr = _call(prompt, mt * 2, cfg=cfg)
             # 仍为空 → 极简提示再试一次（不带正文，最短输出）
             if not raw:
                 short = ('只输出一行 JSON，不要任何思考与解释。文件名：%s。'
                          '从这些分组里选：%s。格式：'
                          '{"kb":"...","group":"...","tags":["..."],"confidence":"high"}'
                          ) % (source.split("/")[-1], "、".join(existing_groups or []) or "无")
-                raw, fr = _call(short, MAX_TOKENS * 2)
+                raw, fr = _call(short, mt * 2, cfg=cfg)
 
             obj = _extract_json(raw)
             if isinstance(obj, dict):
@@ -144,7 +162,7 @@ def classify(source, head_text, existing_groups, kb_names):
                     "group": (str(g).strip() if g else None),
                     "tags": tags,
                     "confidence": (obj.get("confidence") or "medium"),
-                    "model": VLM_MODEL,
+                    "model": model,
                     "seconds": round(time.time() - t0, 1),
                     "attempt": i + 1,
                 }
@@ -154,10 +172,8 @@ def classify(source, head_text, existing_groups, kb_names):
             last_err = f"{type(e).__name__}: {str(e)[:100]}"
         time.sleep(0.8)
 
-    # 全部失败：把原因带回去，方便排查
-    try:
-        return {"kb": None, "group": None, "tags": [], "confidence": "low",
-                "model": VLM_MODEL, "seconds": round(time.time() - t0, 1),
-                "attempt": len(attempts), "error": last_err}
-    except Exception:
-        return None
+    # 全部失败：把原因带回去，方便排查（前端直接显示 error）
+    return {"kb": None, "group": None, "tags": [], "confidence": "low",
+            "model": model, "seconds": round(time.time() - t0, 1),
+            "attempt": len(attempts), "error": last_err,
+            "error_kind": _kind_of(last_err)}

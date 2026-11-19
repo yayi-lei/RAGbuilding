@@ -80,7 +80,7 @@ services:
       - KB_ADMIN_PASS=${KB_ADMIN_PASS:-}
       - VLM_BASE_URL=${VLM_BASE_URL}
       - VLM_API_KEY=${VLM_API_KEY}
-      - VLM_MODEL=${VLM_MODEL:-zhanlu/glm-5.3-flash}
+      - VLM_MODEL=${VLM_MODEL:-moma/glm-5.3-flash}
       - OCR_MIN_CHARS=${OCR_MIN_CHARS:-50}
       - OCR_DPI=${OCR_DPI:-150}
       - TZ=Asia/Shanghai
@@ -119,7 +119,7 @@ services:
       - TMP_DIR=/tmp/ragtmp
       - VLM_BASE_URL=${VLM_BASE_URL}
       - VLM_API_KEY=${VLM_API_KEY}
-      - VLM_MODEL=${VLM_MODEL:-zhanlu/glm-5.3-flash}
+      - VLM_MODEL=${VLM_MODEL:-moma/glm-5.3-flash}
       - OCR_MIN_CHARS=${OCR_MIN_CHARS:-50}
       - OCR_DPI=${OCR_DPI:-150}
       - TZ=Asia/Shanghai

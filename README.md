@@ -23,6 +23,9 @@ AI 客户端 ──MCP──┐                   混合检索（稠密向量 + 
 - **扫描件 OCR**：PDF 文本层太薄时自动走多模态模型转写（可选，不配则跳过）
 - **嵌入主备兜底**：本地 Ollama 优先，挂了自动降级到 Cloudflare Workers AI，向量可混写
 - **管理台**：文件浏览、上传、索引进度、分块可视化编辑、KB 分组、标签、AI 归档建议
+- **模型在线可配**：AI 归档用的网关地址 / 密钥 / 模型名在管理台「AI 建议设置」里改，写进 `data/state/ai_settings.json`，
+  **优先级高于环境变量**，改完立即生效（网关换了模型名也不用改 `.env` 重建容器）；
+  顶栏常驻一个状态标签，绿=当前模型可用、红=模型名已失效并直接给出原因与可用模型清单
 - **MCP 原生**：自带 streamable-http MCP server，AI 客户端可直连
 
 ---
@@ -158,7 +161,9 @@ http://<你的IP>:8765/
 | `OLLAMA_URL` | `http://host.docker.internal:11434` | 本地 Ollama 地址 |
 | `EMBED_FAIL_THRESHOLD` / `EMBED_COOLDOWN` | `3` / `120` | 连续失败几次熔断、熔断多少秒 |
 | `CF_ENABLED` / `CF_ACCOUNT_ID` / `CF_API_TOKEN` / `CF_MODEL` | — | Cloudflare 兜底，不填则只用本地 |
-| `VLM_BASE_URL` / `VLM_API_KEY` / `VLM_MODEL` | — | 扫描件 OCR 用的多模态网关，不填则跳过 OCR |
+| `VLM_BASE_URL` / `VLM_API_KEY` / `VLM_MODEL` | — | 多模态网关（扫描件 OCR + AI 归档建议共用）。不填则跳过 OCR / 不做建议 |
+| —— 以下不进 `.env`，在管理台里改 —— | | |
+| `data/state/ai_settings.json` | 随环境变量 | 管理台「AI 建议设置」写入的 `base_url / api_key / model / enabled / timeout / max_tokens`，**覆盖同名环境变量** |
 | `OCR_MIN_CHARS` / `OCR_DPI` | `50` / `150` | 判定扫描件的文本阈值、渲染 DPI |
 
 ---

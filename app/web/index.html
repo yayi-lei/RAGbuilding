@@ -30,6 +30,7 @@
   .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:1px}
   .dot.on{background:#67c23a;box-shadow:0 0 0 2px rgba(103,194,58,.18)}
   .dot.off{background:#f56c6c;box-shadow:0 0 0 2px rgba(245,108,108,.18)}
+  .dot.idle{background:#c0c4cc;box-shadow:0 0 0 2px rgba(192,196,204,.18)}
   .body{padding:18px 24px 40px;flex:1;max-width:1360px;width:100%;margin:0 auto;box-sizing:border-box}
 
   .stat-card{border-radius:10px}
@@ -228,16 +229,22 @@
       </el-tag>
       <el-tag v-else type="info" effect="plain" size="small">OCR 未配置</el-tag>
       <el-tag type="primary" effect="plain" size="small">嵌入 {{ st.embed_model }}</el-tag>
+      <el-tooltip :content="aiTip()" placement="bottom" :show-after="200">
+        <el-tag :type="aiTagType()" effect="light" size="small" style="cursor:pointer" @click="openAiSettings">
+          <span class="dot" :class="ai.ok === true ? 'on' : (ai.ok === false ? 'off' : 'idle')"></span>
+          AI 建议 · {{ ai.model || '未配置' }}<span v-if="ai.ok !== true">{{ aiShort() }}</span>
+        </el-tag>
+      </el-tooltip>
       <el-tooltip :content="beTip('local')" placement="bottom" :show-after="200">
         <el-tag :type="be.local.ok ? 'success' : 'danger'" effect="light" size="small" style="cursor:help">
           <span class="dot" :class="be.local.ok ? 'on' : 'off'"></span>
-          本地 Ollama<span v-if="be.local.ms != null"> · {{ be.local.ms }}ms</span>
+          本地 Ollama<span v-if="be.local.ok && be.local.ms != null"> · {{ be.local.ms }}ms</span><span v-else-if="!be.local.ok">{{ beShort(be.local) }}</span>
         </el-tag>
       </el-tooltip>
       <el-tooltip :content="beTip('cloudflare')" placement="bottom" :show-after="200">
         <el-tag :type="be.cloudflare.ok ? 'success' : 'danger'" effect="light" size="small" style="cursor:help">
           <span class="dot" :class="be.cloudflare.ok ? 'on' : 'off'"></span>
-          Cloudflare<span v-if="be.cloudflare.ms != null"> · {{ be.cloudflare.ms }}ms</span>
+          Cloudflare<span v-if="be.cloudflare.ok && be.cloudflare.ms != null"> · {{ be.cloudflare.ms }}ms</span><span v-else-if="!be.cloudflare.ok">{{ beShort(be.cloudflare) }}</span>
         </el-tag>
       </el-tooltip>
       <span class="spacer"></span>
@@ -606,6 +613,18 @@
               <el-badge v-if="candCount" :value="candCount" type="danger" style="margin-left:6px"></el-badge>
             </template>
 
+            <!-- 模型失效：首页顶部标签 + 这里都要能一眼看到 -->
+            <el-alert v-if="ai.ok === false" type="error" :closable="false" show-icon
+                      style="margin-bottom:12px"
+                      :title="'AI 建议模型不可用：' + (ai.model || '-') + aiShort()">
+              <div style="font-size:12px;line-height:1.7">
+                {{ ai.error || '没有拿到具体原因，去设置里点「测试连接」看看' }}
+                <el-button size="small" type="primary" link @click="openAiSettings">去设置</el-button>
+              </div>
+            </el-alert>
+            <el-alert v-else-if="ai.ok === null" type="info" :closable="false" show-icon
+                      style="margin-bottom:12px" title="正在检测 AI 建议模型是否可用…"></el-alert>
+
             <div class="toolbar">
               <el-button type="primary" :icon="icons.MagicStick" :loading="candRunning"
                          :disabled="candRunning" @click="runClassify(false)">
@@ -821,6 +840,46 @@
   </el-dialog>
 
   <!-- ==================== 知识库新建/重命名 ==================== -->
+  <!-- ===== AI 建议设置（模型可改，改完立即生效） ===== -->
+  <el-dialog v-model="aiDlg" title="AI 建议设置" width="580px">
+    <el-alert :type="ai.ok === true ? 'success' : (ai.ok === false ? 'error' : 'info')"
+              :closable="false" show-icon style="margin-bottom:14px"
+              :title="ai.ok === true ? ('当前模型可用：' + ai.model + (ai.latency_ms != null ? ' · ' + ai.latency_ms + 'ms' : ''))
+                      : (ai.ok === false ? ('当前模型不可用：' + (ai.error || ai.code || '未知原因'))
+                      : ('还没检测：' + (ai.model || '')))"
+              :description="ai.checked_at ? ('上次检测 ' + fmtTime(ai.checked_at)) : ''">
+    </el-alert>
+
+    <el-form label-width="98px">
+      <el-form-item label="启用">
+        <el-switch v-model="aiForm.enabled"></el-switch>
+        <span style="margin-left:10px;font-size:12px;color:#909399">关掉后「AI 建议分组」不再调模型</span>
+      </el-form-item>
+      <el-form-item label="接口地址">
+        <el-input v-model="aiForm.base_url" placeholder="https://api.example.com/v1"></el-input>
+      </el-form-item>
+      <el-form-item label="API Key">
+        <el-input v-model="aiForm.api_key" type="password" show-password clearable
+                  :placeholder="ai.api_key_set ? ('已配置（' + (ai.api_key_masked || '****') + '），留空表示不修改') : '粘贴 sk-...'"></el-input>
+      </el-form-item>
+      <el-form-item label="模型">
+        <el-select v-model="aiForm.model" filterable allow-create default-first-option clearable
+                   style="width:100%" placeholder="选一个，或直接输入模型名">
+          <el-option v-for="m in aiModels" :key="m" :label="m" :value="m"></el-option>
+        </el-select>
+        <div style="font-size:12px;color:#909399;line-height:1.6;margin-top:2px">
+          模型名必须和网关上的一致——网关换了名字，这里也要跟着改。点左下角「拉取模型列表」可直接从网关读取。
+        </div>
+      </el-form-item>
+    </el-form>
+
+    <template #footer>
+      <el-button :loading="aiLoadingModels" @click="loadAiModels(false)">拉取模型列表</el-button>
+      <el-button :loading="aiTesting" @click="testAi">测试连接</el-button>
+      <el-button type="primary" :loading="aiSaving" @click="saveAi">保存</el-button>
+    </template>
+  </el-dialog>
+
   <el-dialog v-model="kbDialog" :title="kbForm.action === 'create' ? '新建知识库' : '重命名知识库'" width="430px">
     <el-form label-width="70px" label-position="left">
       <el-form-item label="名称">
@@ -909,7 +968,7 @@ const app = createApp({
         lf.password = '';
         logged.value = true;
         ElMessage.success('登录成功');
-        nextTick(() => refresh());
+        nextTick(() => { refresh(); startAiPoll(); });
       } catch (e) { ElMessage.error(e.message); }
       logging.value = false;
     }
@@ -952,6 +1011,7 @@ const app = createApp({
         await loadKbs(true);
         await loadGroupTree();
         loadCandidates();
+        loadAi(false);                 // 顺带刷新"当前模型是否失效"
       } catch (e) {
         if (e.code === 401) { TOKEN = ''; localStorage.removeItem('kb_token'); logged.value = false; return; }
         conn.ok = false;
@@ -1273,12 +1333,12 @@ const app = createApp({
       if (!TOKEN) return;                      // 无 token → 停在登录页
       try {
         const r = await fetch('/api/status', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
-        if (r.ok) { logged.value = true; refresh(); pollIndex(); startBackendPoll(); return; }
+        if (r.ok) { logged.value = true; refresh(); pollIndex(); startBackendPoll(); startAiPoll(); return; }
         if (r.status === 401) {
           localStorage.removeItem('kb_token'); TOKEN = '';
           ElMessage.warning('登录凭据已失效，请重新登录');
         }
-      } catch (e) { /* 后端不通，也先进去让用户看到"连接失败" */ logged.value = true; refresh(); pollIndex(); startBackendPoll(); }
+      } catch (e) { /* 后端不通，也先进去让用户看到"连接失败" */ logged.value = true; refresh(); pollIndex(); startBackendPoll(); startAiPoll(); }
     });
 
     /* ================= 目录树 ================= */
@@ -1751,6 +1811,10 @@ const app = createApp({
     }
 
     async function runClassify(force) {
+      if (ai.ok === false) {
+        ElMessage.warning('当前 AI 模型不可用（' + aiShort().replace(' · ', '') + '），先去「AI 建议设置」里换成可用的模型');
+        return;
+      }
       try {
         const r = await api('/api/candidates/run', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1832,6 +1896,20 @@ const app = createApp({
       const det = b.detail ? ' · ' + b.detail : '';
       return head + ms + det;
     }
+    // 失败时不要显示毫秒（那只是"失败花了几毫秒"），显示人话原因
+    function beShort(b) {
+      if (!b || b.ok) return '';
+      const d = String(b.detail || '').toLowerCase();
+      if (d.includes('name or service not known') || d.includes('nodename') || d.includes('getaddrinfo'))
+        return ' · 域名解析失败';
+      if (d.includes('timeout') || d.includes('timed out')) return ' · 超时';
+      if (d.includes('http 401') || d.includes('http 403')) return ' · 认证失败';
+      if (d.includes('http 4') || d.includes('http 5')) return ' · 服务报错';
+      if (d.includes('connecterror') || d.includes('connection') || d.includes('refused'))
+        return ' · 连不上';
+      return ' · 不可用';
+    }
+
     async function loadBackends() {
       try {
         const d = await api('/api/backends');
@@ -1847,9 +1925,134 @@ const app = createApp({
       beTimer = setInterval(loadBackends, 30000);
     }
 
+    /* ================= AI 建议设置 / 模型可用性 ================= */
+    const ai = reactive({
+      ok: null, model: '', base_url: '', latency_ms: null, code: '', error: '',
+      checked_at: 0, enabled: true, api_key_set: false, api_key_masked: ''
+    });
+    const aiDlg = ref(false);
+    const aiForm = reactive({ base_url: '', api_key: '', model: '', enabled: true });
+    const aiModels = ref([]);
+    const aiTesting = ref(false), aiSaving = ref(false), aiLoadingModels = ref(false);
+    let aiTimer = null;
+
+    function aiShort() {
+      if (ai.ok === true) return '';
+      if (ai.ok !== false) return ' · 检测中…';
+      const c = ai.code || '';
+      if (c === 'model_not_found') return ' · 模型名已失效';
+      if (c === 'auth') return ' · 认证失败';
+      if (c === 'network') return ' · 连不上';
+      if (c === 'disabled') return ' · 已关闭';
+      if (c === 'unconfigured') return ' · 未配置';
+      if (c === 'server_error') return ' · 网关报错';
+      return ' · 不可用';
+    }
+    function aiTagType() { return ai.ok === true ? 'success' : (ai.ok === false ? 'danger' : 'info'); }
+    function aiTip() {
+      const head = ai.ok === true ? 'AI 建议模型可用'
+                 : (ai.ok === false ? 'AI 建议模型不可用' : '正在检测 AI 建议模型');
+      const ms = (ai.ok === true && ai.latency_ms != null) ? ' · ' + ai.latency_ms + 'ms' : '';
+      const det = ai.error ? ' · ' + ai.error : '';
+      const t = ai.checked_at ? '（检测于 ' + fmtTime(ai.checked_at) + '）' : '';
+      return head + '：' + (ai.model || '-') + ms + det + t + ' —— 点开可改模型';
+    }
+
+    async function loadAi(force) {
+      try {
+        const d = await api('/api/ai/status' + (force ? '?force=1' : ''));
+        Object.assign(ai, { ok: d.ok === undefined ? null : d.ok, model: d.model, base_url: d.base_url,
+                            latency_ms: d.latency_ms, code: d.code, error: d.error,
+                            checked_at: d.checked_at });
+        if (d.settings) Object.assign(ai, { enabled: d.settings.enabled,
+                                            api_key_set: d.settings.api_key_set,
+                                            api_key_masked: d.settings.api_key_masked });
+      } catch (e) { /* 状态灯不打断主流程 */ }
+    }
+    function startAiPoll() {
+      if (aiTimer) return;
+      loadAi(false);
+      aiTimer = setInterval(() => loadAi(false), 60000);
+    }
+
+    async function openAiSettings() {
+      aiDlg.value = true;
+      aiForm.api_key = '';
+      try {
+        const s = await api('/api/ai/settings');
+        aiForm.base_url = s.base_url || '';
+        aiForm.model = s.model || '';
+        aiForm.enabled = s.enabled !== false;
+        Object.assign(ai, { model: s.model, base_url: s.base_url, enabled: s.enabled,
+                            api_key_set: s.api_key_set, api_key_masked: s.api_key_masked });
+      } catch (e) { ElMessage.error('读取设置失败：' + e.message); }
+      if (!aiModels.value.length) loadAiModels(true);
+      loadAi(false);
+    }
+
+    async function loadAiModels(quiet) {
+      aiLoadingModels.value = true;
+      try {
+        const d = await api('/api/ai/models');
+        aiModels.value = d.models || [];
+        if (d.error) { if (!quiet) ElMessage.warning(d.error); }
+        else if (!quiet) ElMessage.success('网关上有 ' + aiModels.value.length + ' 个模型');
+      } catch (e) { if (!quiet) ElMessage.error(e.message); }
+      aiLoadingModels.value = false;
+    }
+
+    async function testAi() {
+      aiTesting.value = true;
+      try {
+        const d = await api('/api/ai/test', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_url: aiForm.base_url, model: aiForm.model,
+                                 api_key: aiForm.api_key, enabled: aiForm.enabled })
+        });
+        Object.assign(ai, { ok: !!d.ok, latency_ms: d.latency_ms, error: d.error,
+                            code: d.code, model: d.model, base_url: d.base_url,
+                            checked_at: d.checked_at });
+        if (d.ok) {
+          ElMessage.success('可用 · ' + d.model + (d.latency_ms != null ? ' · ' + d.latency_ms + 'ms' : ''));
+        } else {
+          ElMessageBox.alert(d.error || d.code || '未知原因', '这个模型现在用不了', { type: 'error' });
+        }
+      } catch (e) { ElMessage.error(e.message); }
+      aiTesting.value = false;
+    }
+
+    async function saveAi() {
+      if (aiForm.enabled && !aiForm.model) { ElMessage.warning('请先选/填模型名'); return; }
+      aiSaving.value = true;
+      try {
+        const d = await api('/api/ai/settings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_url: aiForm.base_url, model: aiForm.model,
+                                 api_key: aiForm.api_key, enabled: aiForm.enabled })
+        });
+        if (d.status) {
+          Object.assign(ai, { ok: !!d.status.ok, latency_ms: d.status.latency_ms,
+                              error: d.status.error, code: d.status.code,
+                              model: d.status.model, base_url: d.status.base_url,
+                              checked_at: d.status.checked_at });
+        }
+        if (d.settings) Object.assign(ai, { enabled: d.settings.enabled,
+                                            api_key_set: d.settings.api_key_set,
+                                            api_key_masked: d.settings.api_key_masked });
+        if (d.status && d.status.ok) {
+          ElMessage.success('已保存，模型验证通过');
+          aiDlg.value = false;
+        } else {
+          ElMessage.warning('已保存，但检测没通过：' + ((d.status && d.status.error) || '未知原因'));
+        }
+        aiForm.api_key = '';
+      } catch (e) { ElMessage.error('保存失败：' + e.message); }
+      aiSaving.value = false;
+    }
+
     return { icons, logged, logging, busy, lf, pwRef, conn, doLogin, doLogout, focusPw,
              st, files, statCards, refresh, prog, logText, logShown, startIndex, idxBackend,
-             be, beTip, loadBackends,
+             be, beTip, beShort, loadBackends,
              pending, dragging, uploading, fileRef, pickFile, onPick, onDrop, doUpload, delFile,
              q, hits, searching, doSearch, fmtSize, fmtTime, tab,
              treeData, treeFilter, clearTreeFilter, onTreeClick, loadTree,
@@ -1864,7 +2067,9 @@ const app = createApp({
              hoverNode, newGroup, renameGroup, delGroup,
              candidates, candCount, candSel, candTable, candRunning, candApplying, candJob,
              candEditDialog, candEdit, loadCandidates, onCandSel, clearCandSel,
-             runClassify, pollCandJob, applyCand, dismissCand, editCand };
+             runClassify, pollCandJob, applyCand, dismissCand, editCand,
+             ai, aiDlg, aiForm, aiModels, aiTesting, aiSaving, aiLoadingModels,
+             aiShort, aiTagType, aiTip, loadAi, openAiSettings, loadAiModels, testAi, saveAi };
   }
 });
 

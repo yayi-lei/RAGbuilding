@@ -17,7 +17,7 @@ OLD_FORMATS = {".doc": "docx", ".xls": "xlsx", ".ppt": "pptx"}
 
 VLM_BASE_URL = os.getenv("VLM_BASE_URL", "").rstrip("/")
 VLM_API_KEY = os.getenv("VLM_API_KEY", "")
-VLM_MODEL = os.getenv("VLM_MODEL", "zhanlu/glm-5.3-flash")
+VLM_MODEL = os.getenv("VLM_MODEL", "moma/glm-5.3-flash")
 OCR_MIN_CHARS = int(os.getenv("OCR_MIN_CHARS", "50"))
 OCR_DPI = int(os.getenv("OCR_DPI", "150"))
 OCR_CACHE = os.getenv("OCR_CACHE", "/ocr_cache")

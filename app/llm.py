@@ -1,9 +1,11 @@
 """统一的 LLM 调用封装（给上下文生成 / 重排 / 归类共用）。
 
 踩过的坑（来自 classify.py 的实战经验）：
-  zhanlu/glm-5.3-flash 会先输出 reasoning_content（思考链），
+  glm-5.3 系会先输出 reasoning_content（思考链），
   若 max_tokens 给小了，思考链会把配额吃光导致 content 为空。
   这里统一做「加倍重试 + 极简提示兜底」。
+
+配置同样走 ai_settings（管理台可改，改完立即生效）。
 """
 import json
 import os
@@ -14,39 +16,44 @@ import time
 
 import httpx
 
-LLM_BASE_URL = (os.getenv("VLM_BASE_URL") or "").rstrip("/")
-LLM_API_KEY = os.getenv("VLM_API_KEY", "")
-LLM_MODEL = os.getenv("VLM_MODEL", "zhanlu/glm-5.3-flash")
-LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "180"))
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "3000"))
+import ai_settings
+
 LLM_RETRY = int(os.getenv("LLM_RETRY", "3"))
 LLM_SEMAPHORE = threading.Semaphore(int(os.getenv("LLM_CONCURRENCY", "4")))
 
 _local = threading.local()
 
 
-def _client():
+def _client(timeout):
     c = getattr(_local, "client", None)
-    if c is None:
-        c = httpx.Client(timeout=LLM_TIMEOUT)
+    if c is None or getattr(_local, "timeout", None) != timeout:
+        c = httpx.Client(timeout=timeout)
         _local.client = c
+        _local.timeout = timeout
     return c
 
 
+def _cfg():
+    return ai_settings.current()
+
+
 def available():
-    return bool(LLM_BASE_URL and LLM_API_KEY)
+    c = _cfg()
+    return bool(c.get("enabled") and c.get("base_url") and c.get("api_key"))
 
 
-def _once(prompt, max_tokens, temperature=0.0):
+def _once(prompt, max_tokens, temperature=0.0, cfg=None):
     """一次调用，返回 (content, finish_reason)。"""
+    cfg = cfg or _cfg()
     body = {
-        "model": LLM_MODEL,
+        "model": cfg["model"],
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": int(max_tokens),
         "temperature": temperature,
     }
-    headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
-    r = _client().post(f"{LLM_BASE_URL}/chat/completions", headers=headers, json=body)
+    headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
+    r = _client(float(cfg.get("timeout") or 180)).post(
+        f"{cfg['base_url']}/chat/completions", headers=headers, json=body)
     r.raise_for_status()
     data = r.json()
     ch = (data.get("choices") or [{}])[0]
@@ -56,15 +63,16 @@ def _once(prompt, max_tokens, temperature=0.0):
 
 def chat(prompt, max_tokens=None, temperature=0.0, retry=None):
     """带重试与降级。返回文本，失败返回 ""。"""
-    if not available():
+    cfg = _cfg()
+    if not (cfg.get("enabled") and cfg.get("base_url") and cfg.get("api_key")):
         return ""
     retry = LLM_RETRY if retry is None else retry
-    mt = int(max_tokens or LLM_MAX_TOKENS)
+    mt = int(max_tokens or cfg.get("max_tokens") or 3000)
     last = ""
     with LLM_SEMAPHORE:
         for attempt in range(retry):
             try:
-                txt, fr = _once(prompt, mt, temperature)
+                txt, fr = _once(prompt, mt, temperature, cfg=cfg)
                 if txt:
                     return txt
                 # content 为空且被截断（思考链吃光配额）→ 加倍

@@ -16,6 +16,7 @@ MCP 工具（给 DSH 调用）：
 
 鉴权：除首页 HTML 外，其余路径都要 Authorization: Bearer <KB_TOKEN>。
 """
+import asyncio
 import fcntl
 import json
 import os
@@ -26,14 +27,15 @@ import threading
 import time
 
 import uvicorn
-import httpx
-from starlette.concurrency import run_in_threadpool
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.routing import Route
 
+import httpx
+
+import ai_settings
 import classify as _classify
 
 from common import (
@@ -59,6 +61,8 @@ from common import (
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("MCP_PORT", "8765"))
 KB_TOKEN = os.getenv("KB_TOKEN", "")
+# embed-shim 内网地址（compose 里 kb-mcp 通过服务名访问）
+EMBED_SHIM_URL = os.getenv("EMBED_SHIM_URL", "http://embed-shim:8100").rstrip("/")
 
 PROGRESS_PREFIX = "@@PROGRESS@@"
 # 索引进程把进度写在这里；cron 后台跑的也能被管理台看到
@@ -117,7 +121,7 @@ mcp = FastMCP("office-kb", host=MCP_HOST, port=MCP_PORT, stateless_http=True)
 
 
 @mcp.tool()
-async def search_kb(query: str, top_k: int = 6) -> str:
+def search_kb(query: str, top_k: int = 6) -> str:
     """在本地文档知识库里做语义检索，返回最相关的原文片段。
 
     用于回答关于历史项目文档、招标文件、合同、方案、评审材料的问题。
@@ -129,14 +133,9 @@ async def search_kb(query: str, top_k: int = 6) -> str:
         top_k: 返回的片段数量，默认 6，最多 15。
     """
     top_k = max(1, min(int(top_k), 15))
-
-    def _do():
-        ensure_collection()
-        return search(query, top_k=top_k)
-
     try:
-        # 同上：同步检索必须在线程池里跑，避免堵住 MCP 的事件循环
-        hits = await run_in_threadpool(_do)
+        ensure_collection()
+        hits = search(query, top_k=top_k)
     except Exception as e:
         return f"检索失败：{e}"
 
@@ -165,14 +164,11 @@ async def search_kb(query: str, top_k: int = 6) -> str:
 
 
 @mcp.tool()
-async def kb_stats() -> str:
+def kb_stats() -> str:
     """查看本地知识库的规模：向量总数、集合名、已被索引的文件数、最近索引时间。"""
-    def _count():
-        ensure_collection()
-        return collection_count()
-
     try:
-        vec_count = await run_in_threadpool(_count)
+        ensure_collection()
+        vec_count = collection_count()
     except Exception as e:
         return f"无法连接向量库：{e}"
 
@@ -243,7 +239,7 @@ def _scan_docs():
     return out
 
 
-def _index_worker(backend="auto"):
+def _index_worker():
     # 与 cron 共用同一把文件锁，防止两个索引同时跑
     try:
         _lock = open(LOCK_FILE, "w")
@@ -260,23 +256,12 @@ def _index_worker(backend="auto"):
 
     with JOB_LOCK:
         JOB.update(running=True, log="", started_at=time.time(), finished_at=0, returncode=None, progress={})
-
-    # 手动选择嵌入通道：只影响本次索引子进程，cron 走的还是默认路径（本地优先、CF 兜底）
-    child_env = dict(os.environ)
-    suffix = {"local": "/local", "cloudflare": "/cf"}.get(backend, "")
-    if suffix:
-        base = (child_env.get("OLLAMA_URL") or "").rstrip("/")
-        if base and not base.endswith(("/local", "/cf")):
-            child_env["OLLAMA_URL"] = base + suffix
-    with JOB_LOCK:
-        JOB["log"] += f"[嵌入通道] {backend}" + (f" → {child_env.get('OLLAMA_URL')}" if suffix else "") + "\n"
-
     rc = -1
     try:
         proc = subprocess.Popen(
             [sys.executable, "index.py", DOCS_DIR],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, cwd=str(APP_DIR), env=child_env,
+            text=True, bufsize=1, cwd=str(APP_DIR),
         )
         for line in proc.stdout:
             if PROGRESS_PREFIX in line:
@@ -1027,6 +1012,11 @@ async def api_cand_run(request):
         with CJOB_LOCK:
             if CJOB["running"]:
                 return JSONResponse({"error": "分类任务正在运行中"}, status_code=409)
+
+        # 当前模型失效就别让它跑一整轮再全红
+        ok_ai, why = ai_settings.usable()
+        if not ok_ai:
+            return JSONResponse({"error": why, "ai_unavailable": True}, status_code=409)
         meta = _ensure_default_kb(_load_kbmeta())
         allfiles = _scan_docs()
         want = body.get("sources")
@@ -1131,6 +1121,58 @@ async def api_cand_dismiss(request):
     return JSONResponse({"ok": True, "dismissed": n})
 
 
+# ================================================================
+# AI 建议设置：模型 / 地址 / Key 可在管理台改，改完立即生效（不用重建容器）
+# ================================================================
+
+async def api_ai_settings(request):
+    """GET 读当前设置；POST 保存，顺带做一次可用性检测返回结果。"""
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        try:
+            pub = ai_settings.save(body or {})
+        except Exception as e:
+            return JSONResponse({"error": f"保存失败：{type(e).__name__}: {e}"}, status_code=400)
+        st = await asyncio.to_thread(ai_settings.status, True)
+        return JSONResponse({"ok": True, "settings": pub, "status": st})
+    return JSONResponse(ai_settings.public())
+
+
+async def api_ai_status(request):
+    """首页状态灯：当前模型到底还能不能用。?force=1 跳过缓存。"""
+    force = request.query_params.get("force") in ("1", "true", "yes")
+    st = await asyncio.to_thread(ai_settings.status, force)
+    st["settings"] = ai_settings.public()
+    return JSONResponse(st)
+
+
+async def api_ai_test(request):
+    """用（可能还没保存的）参数试一发，返回 ok / 失败原因 / 耗时。"""
+    body = {}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+    cfg = dict(ai_settings.current())
+    for k in ("base_url", "model"):
+        if body.get(k):
+            cfg[k] = str(body[k]).strip()
+    if body.get("api_key"):
+        cfg["api_key"] = str(body["api_key"]).strip()
+    if body.get("enabled") is not None:
+        cfg["enabled"] = bool(body["enabled"])
+    return JSONResponse(await asyncio.to_thread(ai_settings.probe, cfg))
+
+
+async def api_ai_models(request):
+    """拉网关的可用模型列表，给设置页的下拉框用。"""
+    return JSONResponse(await asyncio.to_thread(ai_settings.list_models))
+
+
 async def api_login(request):
     """网页登录：验证账号密码，成功后返回 KB_TOKEN。
 
@@ -1176,6 +1218,37 @@ async def homepage(request):
     )
 
 
+async def api_backends(request):
+    """代理 embed-shim 的 /probe，给管理台顶部两颗指示灯用。
+
+    前端期望形状：{local:{ok,ms,detail}, cloudflare:{ok,ms,detail}}
+    embed-shim /probe 返回的正好是这个形状，直接透传。
+
+    为什么不在 kb-mcp 里自己探：CF 的 token、Ollama 的真实地址都在
+    embed-shim 容器里，kb-mcp 拿不到，只能问它。
+    """
+    empty = {"ok": False, "ms": None, "detail": ""}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as c:
+            r = await c.get(f"{EMBED_SHIM_URL}/probe")
+        if r.status_code != 200:
+            msg = f"shim HTTP {r.status_code}"
+            return JSONResponse({"local": {**empty, "detail": msg},
+                                 "cloudflare": {**empty, "detail": msg}})
+        d = r.json() or {}
+        return JSONResponse({
+            "local": d.get("local") or empty,
+            "cloudflare": d.get("cloudflare") or empty,
+            "priority": d.get("priority") or "",
+            "last_backend": d.get("last_backend") or "",
+            "breakers": d.get("breakers") or {},
+        })
+    except Exception as e:
+        msg = f"{type(e).__name__}: {str(e)[:140]}"
+        return JSONResponse({"local": {**empty, "detail": msg},
+                             "cloudflare": {**empty, "detail": msg}})
+
+
 async def api_status(request):
     try:
         ensure_collection()
@@ -1199,7 +1272,9 @@ async def api_status(request):
         "indexing": JOB["running"],
         "ocr_ready": bool(os.getenv("VLM_API_KEY")),
         "embed_model": os.getenv("EMBED_MODEL", ""),
-        "vlm_model": os.getenv("VLM_MODEL", ""),
+        "vlm_model": ai_settings.current()["model"],
+        "ai_enabled": ai_settings.current()["enabled"],
+        "ai": ai_settings.status_cached(),
     })
 
 
@@ -1267,26 +1342,6 @@ def _read_progress_file():
         return {}
 
 
-async def api_backends(request):
-    """顶部连接状态指示灯：转发 embed-shim 的 /probe。
-
-    只读探测，不解码任何文档、不消耗 Cloudflare neurons：
-      local  -> GET {OLLAMA_URL}/api/version
-      cf     -> GET /user/tokens/verify
-    """
-    base = (os.getenv("OLLAMA_URL") or "").rstrip("/")
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get(f"{base}/probe")
-            return JSONResponse(r.json())
-    except Exception as e:
-        return JSONResponse({
-            "local": {"ok": False, "ms": None, "detail": f"embed-shim 不可达：{e}"},
-            "cloudflare": {"ok": False, "ms": None, "detail": f"embed-shim 不可达：{e}"},
-            "error": str(e),
-        })
-
-
 async def api_index_progress(request):
     """统一的索引进度接口。
 
@@ -1319,13 +1374,6 @@ async def api_index_progress(request):
 
 async def api_index(request):
     if request.method == "POST":
-        try:
-            _body = await request.json()
-        except Exception:
-            _body = {}
-        backend = (_body or {}).get("backend") or "auto"
-        if backend not in ("auto", "local", "cloudflare"):
-            backend = "auto"
         with JOB_LOCK:
             if JOB["running"]:
                 return JSONResponse({"error": "索引正在运行中（本进程）"}, status_code=409)
@@ -1337,8 +1385,8 @@ async def api_index(request):
                 "running_elsewhere": True,
                 "progress": pf,
             }, status_code=409)
-        threading.Thread(target=_index_worker, args=(backend,), daemon=True).start()
-        return JSONResponse({"started": True, "backend": backend})
+        threading.Thread(target=_index_worker, daemon=True).start()
+        return JSONResponse({"started": True})
     with JOB_LOCK:
         pf = _read_progress_file()
         return JSONResponse({
@@ -1368,11 +1416,7 @@ async def api_search(request):
     group = (body.get("group") or "").strip()
     use_rerank = body.get("rerank")
     try:
-        # 检索链路（ollama 嵌入 + qdrant 查询 + LLM 重排）全是同步阻塞调用，
-        # 单次可能跑 30~400 秒。必须放到线程池，否则整个事件循环被占住，
-        # 期间管理台、kb_stats、MCP 握手全部无响应（实测会整站假死）。
-        hits = await run_in_threadpool(
-            search_in,
+        hits = search_in(
             q,
             top_k=max(1, min(k, 15)),
             sources=sources,
@@ -1449,6 +1493,10 @@ def build_app():
         Route("/api/candidates/run", api_cand_run, methods=["GET", "POST"]),
         Route("/api/candidates/apply", api_cand_apply, methods=["POST"]),
         Route("/api/candidates/dismiss", api_cand_dismiss, methods=["POST"]),
+        Route("/api/ai/settings", api_ai_settings, methods=["GET", "POST"]),
+        Route("/api/ai/status", api_ai_status),
+        Route("/api/ai/test", api_ai_test, methods=["POST"]),
+        Route("/api/ai/models", api_ai_models),
         Route("/api/tags", api_tags_get, methods=["GET"]),
         Route("/api/tags", api_tags_set, methods=["POST"]),
         Route("/api/chunks", api_chunks_list, methods=["GET"]),
